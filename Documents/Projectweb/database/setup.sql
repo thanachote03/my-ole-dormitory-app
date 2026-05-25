@@ -198,11 +198,11 @@ END $$;
 
 -- Rooms (amenities uses text[] — PostgreSQL native array syntax)
 INSERT INTO public.rooms (id, floor, type, price, status, amenities) VALUES
-  ('101', 1, 'เดี่ยว', 1200, 'ไม่ว่าง', ARRAY['แอร์','Wi-Fi']),
-  ('102', 1, 'เดี่ยว', 1200, 'ไม่ว่าง', ARRAY['แอร์','Wi-Fi']),
-  ('103', 1, 'เดี่ยว', 1200, 'ไม่ว่าง', ARRAY['แอร์','Wi-Fi','ตู้เย็น']),
-  ('104', 1, 'เดี่ยว', 1200, 'ไม่ว่าง', ARRAY['แอร์','Wi-Fi','ตู้เย็น']),
-  ('105', 1, 'เดี่ยว', 1200, 'ว่าง',    ARRAY['แอร์','Wi-Fi']),
+  ('101', 1, 'เดี่ยว', 1200, 'ว่าง', ARRAY['แอร์','Wi-Fi']),
+  ('102', 1, 'เดี่ยว', 1200, 'ว่าง', ARRAY['แอร์','Wi-Fi']),
+  ('103', 1, 'เดี่ยว', 1200, 'ว่าง', ARRAY['แอร์','Wi-Fi','ตู้เย็น']),
+  ('104', 1, 'เดี่ยว', 1200, 'ว่าง', ARRAY['แอร์','Wi-Fi','ตู้เย็น']),
+  ('105', 1, 'เดี่ยว', 1200, 'ว่าง', ARRAY['แอร์','Wi-Fi']),
   ('106', 1, 'เดี่ยว', 3500, 'ว่าง',    ARRAY['แอร์','Wi-Fi']),
   ('201', 2, 'คู่',    1500, 'ว่าง',    ARRAY['แอร์','Wi-Fi','ระเบียง']),
   ('202', 2, 'คู่',    1500, 'ว่าง',    ARRAY['แอร์','Wi-Fi','ระเบียง']),
@@ -217,21 +217,8 @@ INSERT INTO public.rooms (id, floor, type, price, status, amenities) VALUES
   ('306', 3, 'สตูดิโอ', 3500, 'ว่าง',   ARRAY['แอร์','Wi-Fi','ตู้เย็น','ครัว'])
 ON CONFLICT (id) DO NOTHING;
 
--- Tenants (sample)
-INSERT INTO public.tenants (id, name, room_id, phone, since_y, since_m, since_day, username, password) VALUES
-  ('T1', 'คุณ ใจดี มากมาย',  '101', '0804444444', 2026, 4, 1, '101', 'tenant'),
-  ('T2', 'คุณใจบุญ ดีมาก',   '102', '0805555555', 2026, 4, 1, '102', 'tenant'),
-  ('T3', 'นาง เมย์สวยมาก',   '103', '0806666666', 2026, 4, 1, '103', 'tenant'),
-  ('T4', 'นาย โอเล่ ลูกอม',  '104', '0804461323', 2026, 4, 1, '104', 'tenant')
-ON CONFLICT (id) DO NOTHING;
-
--- Payments (current month — pending)
-INSERT INTO public.payments (room_id, year, month, amount, status) VALUES
-  ('101', 2026, 4, 1200, 'รอชำระ'),
-  ('102', 2026, 4, 1200, 'รอชำระ'),
-  ('103', 2026, 4, 1200, 'รอชำระ'),
-  ('104', 2026, 4, 1200, 'ชำระแล้ว')
-ON CONFLICT (room_id, year, month) DO NOTHING;
+-- Tenants & payments: no seed data — start with an empty system.
+-- (Add tenants through the UI; rooms above start with status='ว่าง'.)
 
 -- Default config
 INSERT INTO public.config (key, value) VALUES

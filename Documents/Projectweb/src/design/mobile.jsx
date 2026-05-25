@@ -93,9 +93,6 @@ export function LoginScreen({ onPick }) {
       </div>
 
       <div style={{ flex: 1 }}/>
-      <div style={{ fontSize: 12, color: "var(--ink-4)", textAlign: "center", marginTop: 16 }}>
-        v2.0 · มีปัญหาในการเข้าใช้งาน? <span style={{ color: "var(--brand)", fontWeight: 600 }}>ติดต่อแอดมิน</span>
-      </div>
     </div>
   );
 }
@@ -123,7 +120,7 @@ function RoleCard({ icon, title, sub, onClick, bg, fg = "var(--ink)", border, da
 // ─── Login Form (Username + Password) ───────────────────────────────────
 export function LoginFormScreen({ role = "owner", onBack, onSuccess }) {
   const { tenants, ownerPin } = useData();
-  const [u, setU] = useState(role === "owner" ? "admin" : "T2");
+  const [u, setU] = useState("");
   const [p, setP] = useState("");
   const [show, setShow] = useState(false);
   const [remember, setRemember] = useState(true);
