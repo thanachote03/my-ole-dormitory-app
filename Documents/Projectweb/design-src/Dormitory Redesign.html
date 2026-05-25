@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Dormitory · Soft Pastel Redesign</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Anuphan:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="theme.css"/>
+<style>
+  body { overflow: hidden; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel" src="icons.jsx"></script>
+<script type="text/babel" src="seed.jsx"></script>
+<script type="text/babel" src="features.jsx"></script>
+<script type="text/babel" src="mobile-frames.jsx"></script>
+<script type="text/babel" src="tenant-app.jsx"></script>
+<script type="text/babel" src="owner-desktop.jsx"></script>
+
+<script type="text/babel">
+const { useState, useEffect } = React;
+
+// ─── Tweakable defaults ─────────────────────────────────────────────
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "palette": [
+    "#e9a08a",
+    "#3d2b22",
+    "#f5ecdf"
+  ],
+  "showLabels": true,
+  "tabRail": "soft"
+}/*EDITMODE-END*/;
+
+function App() {
+  const [tweaks, setTweak] = window.useTweaks
+    ? window.useTweaks(TWEAK_DEFAULTS)
+    : [TWEAK_DEFAULTS, () => {}];
+
+  // Apply palette to CSS vars
+  useEffect(() => {
+    const p = tweaks.palette;
+    if (!p) return;
+    document.documentElement.style.setProperty("--brand", p[0]);
+  }, [tweaks.palette]);
+
+  const { DesignCanvas, DCSection, DCArtboard } = window;
+  const { Phone, LoginScreen, LoginFormScreen } = window.MobileFrames;
+  const { TenantApp, OwnerDesktop } = window;
+
+  // tiny demo state for the multi-step mobile flow
+  const [authStep, setAuthStep] = useState("login"); // login → pin → ownerDone (we just demo screens)
+
+  return (
+    <>
+      {window.TweaksPanel && (
+        <window.TweaksPanel title="ปรับแต่ง">
+          <window.TweakSection title="โทนสี">
+            <window.TweakColor
+              label="ชุดสี"
+              value={tweaks.palette}
+              onChange={(v) => setTweak("palette", v)}
+              options={[
+                ["#e9a08a","#3d2b22","#f5ecdf"],
+                ["#c4977a","#2e2620","#f0e8db"],
+                ["#d18d75","#3a2a23","#f4ebde"],
+                ["#a89282","#2c2520","#efe6d8"],
+                ["#9bb3a0","#2a3530","#eef0e9"]
+              ]}
+            />
+          </window.TweakSection>
+        </window.TweaksPanel>
+      )}
+
+      <DesignCanvas>
+        <DCSection id="overview" title="Dormitory · Soft Pastel Redesign" subtitle="ฟอนต์ Anuphan + Plus Jakarta Sans · พาเลตต์ peach + sage + cream · ทุกหน้าใช้งานได้จริง">
+
+          <DCArtboard id="login" label="01 · Login (เลือก role)" width={390} height={844}>
+            <Phone><LoginScreen onPick={(r) => alert(r === "tenant" ? "→ ไปกรอก username/password ผู้เช่า" : "→ ไปกรอก username/password เจ้าของ")}/></Phone>
+          </DCArtboard>
+
+          <DCArtboard id="login-form" label="02 · Username + Password" width={390} height={844}>
+            <Phone><LoginFormScreen role="owner" onBack={() => {}} onSuccess={(u) => alert(`เข้าสู่ระบบ: ${u}`)} /></Phone>
+          </DCArtboard>
+
+          <DCArtboard id="tenant-home" label="03 · ผู้เช่า · หน้าหลัก (มีป๊อปอัพแจ้งครบกำหนด)" width={390} height={844}>
+            <Phone><TenantApp tenantId="T2"/></Phone>
+          </DCArtboard>
+
+          <DCArtboard id="tenant-pay" label="04 · ผู้เช่า · ชำระเงิน + เลขบัญชี + แนบสลิป" width={390} height={844}>
+            <Phone><TenantAppPreset tab="payment" tenantId="T2"/></Phone>
+          </DCArtboard>
+
+          <DCArtboard id="tenant-repair" label="05 · ผู้เช่า · แจ้งซ่อม" width={390} height={844}>
+            <Phone><TenantAppPreset tab="repair" tenantId="T4"/></Phone>
+          </DCArtboard>
+
+          <DCArtboard id="tenant-utility" label="06 · ผู้เช่า · มิเตอร์น้ำ-ไฟ" width={390} height={844}>
+            <Phone><TenantAppPreset tab="utility" tenantId="T1"/></Phone>
+          </DCArtboard>
+
+          <DCArtboard id="tenant-profile" label="07 · ผู้เช่า · บัญชี" width={390} height={844}>
+            <Phone><TenantAppPreset tab="profile" tenantId="T1"/></Phone>
+          </DCArtboard>
+
+        </DCSection>
+
+        <DCSection id="desktop" title="เจ้าของหอ · Desktop Dashboard" subtitle="หน้าจอ 1280 × 800 — ใช้กับคอมที่บ้าน / สำนักงาน · มี Notification + ระบบอนุมัติสลิป + มิเตอร์น้ำไฟ">
+
+          <DCArtboard id="ow-overview" label="08 · Overview (มี Alert สลิปรอ + Notification)" width={1280} height={800}>
+            <OwnerDesktop initialTab="overview"/>
+          </DCArtboard>
+
+          <DCArtboard id="ow-slips" label="09 · อนุมัติสลิปการชำระเงิน" width={1280} height={800}>
+            <OwnerDesktop initialTab="slips"/>
+          </DCArtboard>
+
+          <DCArtboard id="ow-utility" label="10 · ค่าน้ำค่าไฟ (จดมิเตอร์)" width={1280} height={800}>
+            <OwnerDesktop initialTab="utility"/>
+          </DCArtboard>
+
+          <DCArtboard id="ow-tenants" label="11 · จัดการผู้เช่า" width={1280} height={800}>
+            <OwnerDesktop initialTab="tenants"/>
+          </DCArtboard>
+
+          <DCArtboard id="ow-rooms" label="12 · ห้องพักทั้งหมด" width={1280} height={800}>
+            <OwnerDesktop initialTab="rooms"/>
+          </DCArtboard>
+
+          <DCArtboard id="ow-repairs" label="13 · ซ่อมบำรุง (Kanban + ตอบกลับ + วันเสร็จ)" width={1280} height={800}>
+            <OwnerDesktop initialTab="repairs"/>
+          </DCArtboard>
+
+          <DCArtboard id="ow-history" label="14 · รายงานรายได้" width={1280} height={800}>
+            <OwnerDesktop initialTab="history"/>
+          </DCArtboard>
+
+        </DCSection>
+      </DesignCanvas>
+    </>
+  );
+}
+
+// preset component to set initial tab for TenantApp
+function TenantAppPreset({ tab, tenantId }) {
+  const { TenantApp } = window;
+  // Crude: render TenantApp and immediately switch tab via a small wrapper.
+  // Since TenantApp owns state we recreate with React.useEffect navigation.
+  return <TenantAppHack tab={tab} tenantId={tenantId}/>;
+}
+
+function TenantAppHack({ tab, tenantId }) {
+  // re-imports the same module-level component but starts on a chosen tab by
+  // mounting a controlled clone. Simplest: render TenantApp and after mount
+  // dispatch a click on the right bottom-nav button.
+  const ref = React.useRef(null);
+  React.useEffect(() => {
+    if (!ref.current) return;
+    const map = { home: 0, payment: 1, repair: 2, utility: 3, profile: 4 };
+    const idx = map[tab];
+    const buttons = ref.current.querySelectorAll("button");
+    // find nav buttons (last 5)
+    const navBtns = Array.from(buttons).slice(-5);
+    if (navBtns[idx]) navBtns[idx].click();
+  }, [tab]);
+  const { TenantApp } = window;
+  return <div ref={ref} style={{ width: "100%", height: "100%" }}><TenantApp tenantId={tenantId}/></div>;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>

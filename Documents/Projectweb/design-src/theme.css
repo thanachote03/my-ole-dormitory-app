@@ -4,10 +4,10 @@
 
 :root {
   /* Neutral cream warm */
-  --bg:        oklch(0.975 0.012 70);
-  --surface:   oklch(1.000 0.000 0);
-  --surface-2: oklch(0.965 0.014 70);
-  --line:      oklch(0.920 0.014 70);
+  --bg:        oklch(0.975 0.012 70);   /* page cream */
+  --surface:   oklch(1.000 0.000 0);    /* card white */
+  --surface-2: oklch(0.965 0.014 70);   /* subdued card */
+  --line:      oklch(0.920 0.014 70);   /* hairline */
   --line-2:    oklch(0.880 0.018 70);
 
   /* Ink */
@@ -16,10 +16,10 @@
   --ink-3:     oklch(0.560 0.020 60);
   --ink-4:     oklch(0.720 0.018 60);
 
-  /* Brand — warm coral */
-  --brand:     oklch(0.745 0.110 35);
-  --brand-2:   oklch(0.700 0.130 30);
-  --brand-soft:oklch(0.945 0.040 40);
+  /* Brand — warm coral (changeable via tweak) */
+  --brand:     oklch(0.745 0.110 35);   /* primary peach/coral */
+  --brand-2:   oklch(0.700 0.130 30);   /* deeper coral */
+  --brand-soft:oklch(0.945 0.040 40);   /* tinted background */
   --brand-ink: oklch(0.380 0.090 30);
 
   /* Secondary — sage */
@@ -62,7 +62,7 @@
 
 * { box-sizing: border-box; }
 
-html, body, #root {
+html, body {
   margin: 0;
   padding: 0;
   background: var(--bg);
@@ -71,21 +71,24 @@ html, body, #root {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
-  min-height: 100vh;
 }
 
 button { font-family: inherit; }
 input, select, textarea { font-family: inherit; color: inherit; }
 
+/* number/money uses Plus Jakarta */
 .num { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
 
+/* Subtle hover lift */
 .lift { transition: transform .15s ease, box-shadow .15s ease; }
 .lift:hover { transform: translateY(-1px); box-shadow: var(--sh-2); }
 
+/* Scrollbar (webkit) */
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 8px; border: 2px solid var(--bg); }
 ::-webkit-scrollbar-track { background: transparent; }
 
+/* Skeleton shimmer */
 @keyframes shimmer {
   0% { background-position: -200px 0; }
   100% { background-position: 200px 0; }
@@ -97,12 +100,14 @@ input, select, textarea { font-family: inherit; color: inherit; }
   border-radius: 8px;
 }
 
+/* gentle fade-in for screens */
 @keyframes screenIn {
   from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 .screen-in { animation: screenIn .35s ease both; }
 
+/* shake for PIN error */
 @keyframes shake {
   10%,90% { transform: translateX(-1px); }
   20%,80% { transform: translateX(2px); }

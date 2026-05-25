@@ -7,19 +7,12 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-# Build / deps
 node_modules
 dist
 dist-ssr
 *.local
 
-# Environment & secrets — these are configured in Vercel/GitHub, never committed
-.env
-.env.local
-.env.*.local
-.env.production
-
-# Editor / OS
+# Editor directories and files
 .vscode/*
 !.vscode/extensions.json
 .idea
@@ -29,7 +22,3 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-
-# Claude / AI session artifacts
-.claude/
-*.tmp
