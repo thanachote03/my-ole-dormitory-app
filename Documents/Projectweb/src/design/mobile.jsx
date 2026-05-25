@@ -205,12 +205,15 @@ export function LoginFormScreen({ role = "owner", onBack, onSuccess }) {
 
       <div className={err ? "shake" : ""} style={{ marginTop: 28, display: "flex", flexDirection: "column", gap: 14 }}>
         <div>
-          <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink-2)", marginBottom: 6 }}>ชื่อผู้ใช้</div>
+          <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink-2)", marginBottom: 6 }}>
+            {role === "tenant" ? "หมายเลขห้อง" : "ชื่อผู้ใช้"}
+          </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "13px 14px",
             background: "var(--surface)", border: `1.5px solid ${err ? "var(--danger)" : "var(--line)"}`,
             borderRadius: 14 }}>
             <IconUser size={18} stroke="var(--ink-3)"/>
-            <input value={u} onChange={e => setU(e.target.value)} placeholder="เช่น admin"
+            <input value={u} onChange={e => setU(e.target.value)}
+              placeholder={role === "tenant" ? "เช่น 101" : "เช่น admin"}
               style={{ flex: 1, border: "none", outline: "none", background: "transparent", fontSize: 15, color: "var(--ink)" }}/>
           </div>
         </div>
