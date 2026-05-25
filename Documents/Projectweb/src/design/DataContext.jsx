@@ -51,6 +51,7 @@ export function DataProvider({ children }) {
   const [billing, setBilling] = useState(SEED_BILLING);
   const [ownerPin, setOwnerPin] = useState("admin1234");
   const [owner, setOwnerState] = useState(DEFAULT_OWNER);
+  const [staff, setStaff] = useState([]);
   const [loaded, setLoaded] = useState(false);
 
   // Hydrate from Supabase; tables that don't exist or fail simply keep the seed.
@@ -61,7 +62,7 @@ export function DataProvider({ children }) {
     let cancelled = false;
     (async () => {
       try {
-        const [r, t, p, rep, util, slip, bank, notif, cfg] = await Promise.all([
+        const [r, t, p, rep, util, slip, bank, notif, cfg, st] = await Promise.all([
           supabase.from("rooms").select("*").order("id"),
           supabase.from("tenants").select("*").order("name"),
           supabase.from("payments").select("*"),
@@ -71,6 +72,7 @@ export function DataProvider({ children }) {
           supabase.from("banks").select("*"),
           supabase.from("notifs").select("*").order("created_at", { ascending: false }),
           supabase.from("config").select("*"),
+          supabase.from("staff").select("*").order("username"),
         ]);
         if (cancelled) return;
         // Use server data when query succeeded (no error). Only keep seed if the table
@@ -83,6 +85,7 @@ export function DataProvider({ children }) {
         if (!slip?.error && slip?.data) setSlips(slip.data);
         if (!bank?.error && bank?.data) setBanks(bank.data);
         if (!notif?.error && notif?.data) setNotifs(notif.data);
+        if (!st?.error && st?.data) setStaff(st.data);
         if (cfg?.data) {
           const pinRow = cfg.data.find(c => c.key === "owner_pin");
           if (pinRow?.value) setOwnerPin(pinRow.value);
@@ -657,8 +660,27 @@ export function DataProvider({ children }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loaded]);
 
+  // ─── Staff (owner-side accounts) ───
+  const addStaff = useCallback(async ({ username, password, role = "admin", name = "" }) => {
+    const id = "S" + Date.now();
+    const row = { id, username: username.trim(), password, role, name };
+    setStaff(prev => [...prev, row]);
+    try { await supabase.from("staff").insert(row); } catch {}
+    return row;
+  }, []);
+
+  const updateStaff = useCallback(async (id, patch) => {
+    setStaff(prev => prev.map(s => s.id === id ? { ...s, ...patch } : s));
+    try { await supabase.from("staff").update(patch).eq("id", id); } catch {}
+  }, []);
+
+  const deleteStaff = useCallback(async (id) => {
+    setStaff(prev => prev.filter(s => s.id !== id));
+    try { await supabase.from("staff").delete().eq("id", id); } catch {}
+  }, []);
+
   const value = useMemo(() => ({
-    rooms: derivedRooms, tenants, payments, repairs, banks, slips, utils, notifs, billing, ownerPin, owner,
+    rooms: derivedRooms, tenants, payments, repairs, banks, slips, utils, notifs, billing, ownerPin, owner, staff,
     setRooms, setTenants, setPayments, setRepairs, setBanks, setSlips, setUtils, setNotifs, setBilling,
     addTenant, addRoom, deleteRoom, updateOwnerPin, updateOwner,
     updateRepair, addRepair, deleteRepair, updateTenant, updateRoom,
@@ -668,14 +690,17 @@ export function DataProvider({ children }) {
     resolveBilling, setRoomBilling, computePaymentTotal,
     // banks
     addBank, updateBank, deleteBank, setPrimaryBank,
+    // staff
+    addStaff, updateStaff, deleteStaff,
     loaded, curY: CUR_Y, curM: CUR_M, utilRate: UTIL_RATE,
-  }), [derivedRooms, rooms, tenants, payments, repairs, banks, slips, utils, notifs, billing, ownerPin, owner, loaded,
+  }), [derivedRooms, rooms, tenants, payments, repairs, banks, slips, utils, notifs, billing, ownerPin, owner, staff, loaded,
        addTenant, addRoom, deleteRoom, updateOwnerPin, updateOwner,
        updateRepair, addRepair, deleteRepair, updateTenant, updateRoom,
        moveTenant, deleteTenant, evictTenant, reactivateTenant, bulkSaveUtils,
        recordPayment, approveSlip, rejectSlip, deleteSlip, addSlip, saveUtilReading, saveInitialReading, markNotifsRead,
        resolveBilling, setRoomBilling, computePaymentTotal,
-       addBank, updateBank, deleteBank, setPrimaryBank]);
+       addBank, updateBank, deleteBank, setPrimaryBank,
+       addStaff, updateStaff, deleteStaff]);
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
 }

@@ -1179,7 +1179,8 @@ function SettingsFooter({ onCancel, onSave, label }) {
 }
 
 export function SettingsModal({ onClose }) {
-  const { owner, updateOwner, banks, addBank, updateBank, deleteBank, setPrimaryBank } = useData();
+  const { owner, updateOwner, banks, addBank, updateBank, deleteBank, setPrimaryBank,
+    staff, addStaff, updateStaff, deleteStaff } = useData();
   const [section, setSection] = useState("profile");
   const [name, setName] = useState(owner.name);
   const [displayName, setDisplayName] = useState(owner.displayName);
@@ -1258,6 +1259,7 @@ export function SettingsModal({ onClose }) {
             { id: "notify",   label: "การแจ้งเตือน", icon: IconBell },
             { id: "billing",  label: "ค่าน้ำ-ไฟ",   icon: IconSparkle },
             { id: "banks",    label: "บัญชีธนาคาร", icon: IconCard },
+            { id: "staff",    label: "ทีมงาน",      icon: IconUsers },
           ].map(s => {
             const Ic = s.icon;
             const active = section === s.id;
@@ -1533,9 +1535,167 @@ export function SettingsModal({ onClose }) {
               <SettingsFooter onCancel={onClose} onSave={saveBilling} label="บันทึก"/>
             </div>
           )}
+
+          {section === "staff" && (
+            <StaffSettings staff={staff} addStaff={addStaff} updateStaff={updateStaff} deleteStaff={deleteStaff}/>
+          )}
         </div>
       </div>
     </ModalShell>
+  );
+}
+
+// ─── Staff (team accounts) settings panel ──────────────────────────────
+function StaffSettings({ staff, addStaff, updateStaff, deleteStaff }) {
+  const [adding, setAdding] = useState(false);
+  const [editId, setEditId] = useState(null);
+  const [form, setForm] = useState({ username: "", password: "", role: "meter", name: "" });
+  const [flash, setFlash] = useState(null);
+
+  const startAdd = () => { setForm({ username: "", password: "", role: "meter", name: "" }); setAdding(true); setEditId(null); setFlash(null); };
+  const startEdit = (s) => { setForm({ username: s.username, password: s.password, role: s.role, name: s.name || "" }); setEditId(s.id); setAdding(false); setFlash(null); };
+  const cancel = () => { setAdding(false); setEditId(null); setFlash(null); };
+
+  const save = async () => {
+    const u = form.username.trim();
+    if (!u || !form.password) { setFlash({ kind: "error", msg: "กรุณากรอกชื่อผู้ใช้และรหัสผ่าน" }); return; }
+    const dup = staff.find(s => s.username.toLowerCase() === u.toLowerCase() && s.id !== editId);
+    if (dup) { setFlash({ kind: "error", msg: "ชื่อผู้ใช้นี้มีอยู่แล้ว" }); return; }
+    if (editId) {
+      await updateStaff(editId, { username: u, password: form.password, role: form.role, name: form.name });
+      setFlash({ kind: "ok", msg: "บันทึกการแก้ไขเรียบร้อย" });
+    } else {
+      await addStaff({ username: u, password: form.password, role: form.role, name: form.name });
+      setFlash({ kind: "ok", msg: "เพิ่มทีมงานเรียบร้อย" });
+    }
+    setAdding(false); setEditId(null);
+  };
+
+  const remove = async (s) => {
+    if (!window.confirm(`ลบบัญชี "${s.username}"?`)) return;
+    await deleteStaff(s.id);
+    setFlash({ kind: "ok", msg: `ลบ "${s.username}" แล้ว` });
+    if (editId === s.id) cancel();
+  };
+
+  const editing = adding || editId;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ padding: "12px 14px", background: "var(--brand-soft)", borderRadius: 12,
+        display: "flex", alignItems: "flex-start", gap: 10 }}>
+        <IconUsers size={16} stroke="var(--brand)"/>
+        <div style={{ fontSize: 12, color: "var(--ink-2)", lineHeight: 1.5 }}>
+          เพิ่มทีมงานเพื่อแยกสิทธิ์การเข้าถึง · <b>Admin</b> เข้าได้ทุกอย่าง · <b>จดมิเตอร์</b> เข้าได้เฉพาะหน้าจดเลขมิเตอร์น้ำ-ไฟ
+        </div>
+      </div>
+
+      {/* List */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {staff.length === 0 && (
+          <div style={{ padding: "20px", textAlign: "center", color: "var(--ink-4)", fontSize: 13,
+            border: "1px dashed var(--line)", borderRadius: 12 }}>
+            ยังไม่มีทีมงาน — กดปุ่มด้านล่างเพื่อเพิ่ม
+          </div>
+        )}
+        {staff.map(s => (
+          <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 12,
+            padding: "10px 12px", background: "var(--surface)", border: "1px solid var(--line)",
+            borderRadius: 12 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10,
+              background: s.role === "admin" ? "var(--brand-soft)" : "var(--surface-2)",
+              display: "flex", alignItems: "center", justifyContent: "center" }}>
+              {s.role === "admin"
+                ? <IconLock size={15} stroke="var(--brand)"/>
+                : <IconSparkle size={15} stroke="var(--ink-3)"/>}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, whiteSpace: "nowrap",
+                overflow: "hidden", textOverflow: "ellipsis" }}>
+                {s.name || s.username}
+              </div>
+              <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginTop: 1 }}>
+                @{s.username} · {s.role === "admin" ? "Admin (เข้าได้ทุกอย่าง)" : "จดมิเตอร์"}
+              </div>
+            </div>
+            <button onClick={() => startEdit(s)} style={{ padding: "6px 10px", borderRadius: 9,
+              border: "1px solid var(--line)", background: "var(--surface-2)", cursor: "pointer",
+              fontSize: 11.5, fontWeight: 600, color: "var(--ink-2)" }}>แก้ไข</button>
+            <button onClick={() => remove(s)} style={{ width: 30, height: 30, borderRadius: 9,
+              border: "1px solid var(--line)", background: "var(--surface-2)", cursor: "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center", color: "var(--danger)" }}>
+              <IconTrash size={13}/>
+            </button>
+          </div>
+        ))}
+      </div>
+
+      {/* Add/Edit form */}
+      {editing && (
+        <div style={{ padding: "14px", background: "var(--surface-2)", border: "1px solid var(--line)", borderRadius: 12,
+          display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ fontSize: 13, fontWeight: 700 }}>
+            {editId ? "แก้ไขทีมงาน" : "เพิ่มทีมงานใหม่"}
+          </div>
+          <AtField label="ชื่อ-นามสกุล (optional)">
+            <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+              placeholder="เช่น สมชาย ใจดี" style={atInputStyle}/>
+          </AtField>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <AtField label="ชื่อผู้ใช้ (สำหรับ login)">
+              <input value={form.username} onChange={e => setForm(f => ({ ...f, username: e.target.value }))}
+                placeholder="เช่น meter1" style={atInputStyle} autoComplete="off"/>
+            </AtField>
+            <AtField label="รหัสผ่าน">
+              <input type="text" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
+                placeholder="กรอกรหัสผ่าน" style={atInputStyle} autoComplete="new-password"/>
+            </AtField>
+          </div>
+          <AtField label="สิทธิ์การเข้าถึง">
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              {[
+                { v: "admin", label: "Admin", desc: "เข้าได้ทุกอย่าง" },
+                { v: "meter", label: "จดมิเตอร์", desc: "เฉพาะหน้าจดมิเตอร์น้ำ-ไฟ" },
+              ].map(opt => (
+                <button key={opt.v} onClick={() => setForm(f => ({ ...f, role: opt.v }))} style={{
+                  padding: "10px 12px", textAlign: "left", cursor: "pointer",
+                  border: `1.5px solid ${form.role === opt.v ? "var(--brand)" : "var(--line)"}`,
+                  background: form.role === opt.v ? "var(--brand-soft)" : "var(--surface)",
+                  borderRadius: 11,
+                }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 700, color: form.role === opt.v ? "var(--brand-ink)" : "var(--ink)" }}>
+                    {opt.label}
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 2 }}>{opt.desc}</div>
+                </button>
+              ))}
+            </div>
+          </AtField>
+          {flash && <FlashMsg flash={flash}/>}
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+            <button onClick={cancel} style={{ padding: "9px 16px", borderRadius: 10,
+              border: "1px solid var(--line)", background: "var(--surface)", cursor: "pointer",
+              fontSize: 12.5, fontWeight: 600, color: "var(--ink-2)" }}>ยกเลิก</button>
+            <button onClick={save} style={{ padding: "9px 18px", borderRadius: 10, border: "none",
+              background: "var(--brand)", color: "white", cursor: "pointer", fontSize: 12.5, fontWeight: 700 }}>
+              {editId ? "บันทึก" : "เพิ่มทีมงาน"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {!editing && (
+        <>
+          {flash && <FlashMsg flash={flash}/>}
+          <button onClick={startAdd} style={{ padding: "11px 14px", borderRadius: 11,
+            border: "1.5px dashed var(--brand)", background: "var(--brand-soft)", cursor: "pointer",
+            fontSize: 13, fontWeight: 700, color: "var(--brand-ink)",
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+            <IconPlus size={14}/> เพิ่มทีมงานใหม่
+          </button>
+        </>
+      )}
+    </div>
   );
 }
 

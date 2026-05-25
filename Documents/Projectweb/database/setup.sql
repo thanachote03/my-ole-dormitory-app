@@ -167,6 +167,18 @@ CREATE TABLE IF NOT EXISTS public.config (
   updated_at      timestamptz  NOT NULL DEFAULT now()
 );
 
+-- ─── 10) STAFF (owner-side accounts with role-based access) ────────────
+-- role: 'admin' (full access) | 'meter' (meter-reading only)
+CREATE TABLE IF NOT EXISTS public.staff (
+  id              text         PRIMARY KEY,
+  username        text         NOT NULL UNIQUE,
+  password        text         NOT NULL,
+  role            text         NOT NULL DEFAULT 'admin',
+  name            text         DEFAULT '',
+  created_at      timestamptz  NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_staff_username ON public.staff(username);
+
 -- ═══════════════════════════════════════════════════════════════════════════
 -- ROW-LEVEL SECURITY (RLS)
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -181,11 +193,12 @@ ALTER TABLE public.slips      ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.banks      ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.notifs     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.config     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.staff      ENABLE ROW LEVEL SECURITY;
 
 DO $$
 DECLARE t text;
 BEGIN
-  FOREACH t IN ARRAY ARRAY['rooms','tenants','payments','utilities','repairs','slips','banks','notifs','config']
+  FOREACH t IN ARRAY ARRAY['rooms','tenants','payments','utilities','repairs','slips','banks','notifs','config','staff']
   LOOP
     EXECUTE format('DROP POLICY IF EXISTS "open_all_%s" ON public.%I', t, t);
     EXECUTE format('CREATE POLICY "open_all_%s" ON public.%I FOR ALL USING (true) WITH CHECK (true)', t, t);
@@ -219,6 +232,11 @@ ON CONFLICT (id) DO NOTHING;
 
 -- Tenants & payments: no seed data — start with an empty system.
 -- (Add tenants through the UI; rooms above start with status='ว่าง'.)
+
+-- Default staff: a single admin account (same credentials as the legacy PIN login)
+INSERT INTO public.staff (id, username, password, role, name) VALUES
+  ('S1', 'admin', 'admin1234', 'admin', 'เจ้าของหอ')
+ON CONFLICT (id) DO NOTHING;
 
 -- Default config
 INSERT INTO public.config (key, value) VALUES

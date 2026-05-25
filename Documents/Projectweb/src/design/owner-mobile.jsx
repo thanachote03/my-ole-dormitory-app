@@ -14,7 +14,7 @@ const {
   IconChevR, IconSearch, IconPlus, IconEdit, IconLogout, IconTrash, IconX,
 } = DI;
 
-export function OwnerMobile({ initialTab = "overview", onLogout }) {
+export function OwnerMobile({ initialTab = "overview", staffRole = "admin", staffName, onLogout }) {
   const { owner, addTenant, updateTenant, moveTenant, tenants, rooms, saveInitialReading } = useData();
   const [tab, setTab] = useState(initialTab);
   const [subPage, setSubPage] = useState(null); // "slips" | "repairs" | "meterroom" | null
@@ -26,6 +26,11 @@ export function OwnerMobile({ initialTab = "overview", onLogout }) {
   const [monthKey, setMonthKey] = useState(null);
   const [roomId, setRoomId] = useState(null);
   const [tenantSel, setTenantSel] = useState(null);
+
+  // Meter-only staff role: dedicated screen that ONLY exposes meter readings.
+  if (staffRole === "meter") {
+    return <MeterOnlyView staffName={staffName} owner={owner} onLogout={onLogout}/>;
+  }
 
   const editingTenant = editId ? tenants.find(t => t.id === editId) : null;
   const detailTenant = tenantSel ? tenants.find(t => t.id === tenantSel) : null;
@@ -1875,6 +1880,37 @@ function MRepairsPage({ onBack }) {
           ยังไม่มีรายการแจ้งซ่อม
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Meter-only staff view ─────────────────────────────────────────────
+// A trimmed shell for staff with role='meter'. The bulk meter reading
+// interface is the entire app — closing it logs the user out.
+function MeterOnlyView({ staffName, owner, onLogout }) {
+  return (
+    <div style={{ width: "100%", minHeight: "100vh", background: "var(--bg)",
+      display: "flex", flexDirection: "column" }}>
+      <div style={{ padding: "14px 18px", background: "var(--surface)",
+        borderBottom: "1px solid var(--line)", display: "flex", alignItems: "center", gap: 12 }}>
+        <div style={{ width: 36, height: 36, borderRadius: 10, background: "var(--brand-soft)",
+          display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <IconSparkle size={16} stroke="var(--brand)"/>
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 11, color: "var(--ink-3)", fontWeight: 600 }}>โหมดจดมิเตอร์</div>
+          <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--ink)",
+            whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            {staffName || owner?.dorm || "ผู้จดมิเตอร์"}
+          </div>
+        </div>
+        <button onClick={onLogout} style={{ background: "transparent", border: "1px solid var(--line)",
+          borderRadius: 10, padding: "7px 11px", cursor: "pointer", display: "flex",
+          alignItems: "center", gap: 6, fontSize: 12, color: "var(--ink-2)" }}>
+          <IconLogout size={13}/> ออก
+        </button>
+      </div>
+      <BulkMeterModal onClose={onLogout}/>
     </div>
   );
 }

@@ -26,7 +26,7 @@ const {
   IconClock, IconEdit, IconWifi, IconTrash,
 } = DI;
 
-export function OwnerDesktop({ initialTab = "overview", onLogout }) {
+export function OwnerDesktop({ initialTab = "overview", staffRole = "admin", staffName, onLogout }) {
   const [tab, setTab] = useState(initialTab);
   const [tenantSel, setTenantSel] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
@@ -38,6 +38,27 @@ export function OwnerDesktop({ initialTab = "overview", onLogout }) {
     window.addEventListener("resize", fn);
     return () => window.removeEventListener("resize", fn);
   }, []);
+
+  // Meter-only staff: only the bulk meter screen is exposed.
+  if (staffRole === "meter") {
+    return (
+      <div style={{ width: "100%", minHeight: "100vh", background: "var(--bg)", display: "flex", flexDirection: "column" }}>
+        <div style={{ background: "var(--surface)", borderBottom: "1px solid var(--line)",
+          padding: "12px 24px", display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ fontWeight: 700, fontSize: 16 }}>Baan<span style={{ color: "var(--brand)" }}>.</span></div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--brand)", background: "var(--brand-soft)",
+            padding: "3px 10px", borderRadius: 100 }}>โหมดจดมิเตอร์</div>
+          <div style={{ flex: 1, fontSize: 13, color: "var(--ink-3)" }}>
+            {staffName || "ผู้จดมิเตอร์"}
+          </div>
+          <button onClick={onLogout} style={{ padding: "7px 14px", borderRadius: 10,
+            border: "1px solid var(--line)", background: "var(--bg)", cursor: "pointer",
+            fontSize: 12.5, color: "var(--ink-2)" }}>ออกจากระบบ</button>
+        </div>
+        <BulkMeterModal onClose={onLogout}/>
+      </div>
+    );
+  }
 
   const contentArea = (
     <div style={{ flex: 1, overflow: "auto", padding: mobile ? "16px" : "20px 32px 32px", background: "var(--bg)" }} className="screen-in" key={tab}>

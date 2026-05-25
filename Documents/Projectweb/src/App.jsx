@@ -40,8 +40,8 @@ function Shell() {
 
   if (auth?.role === "owner") {
     return mobile
-      ? <OwnerMobile onLogout={handleLogout}/>
-      : <OwnerDesktop onLogout={handleLogout}/>;
+      ? <OwnerMobile staffRole={auth.staffRole} staffName={auth.staffName} onLogout={handleLogout}/>
+      : <OwnerDesktop staffRole={auth.staffRole} staffName={auth.staffName} onLogout={handleLogout}/>;
   }
   if (auth?.role === "tenant") {
     return (

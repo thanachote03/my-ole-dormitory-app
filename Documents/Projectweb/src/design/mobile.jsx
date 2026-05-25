@@ -119,7 +119,7 @@ function RoleCard({ icon, title, sub, onClick, bg, fg = "var(--ink)", border, da
 
 // ─── Login Form (Username + Password) ───────────────────────────────────
 export function LoginFormScreen({ role = "owner", onBack, onSuccess }) {
-  const { tenants, ownerPin } = useData();
+  const { tenants, ownerPin, staff } = useData();
   const [u, setU] = useState("");
   const [p, setP] = useState("");
   const [show, setShow] = useState(false);
@@ -145,11 +145,16 @@ export function LoginFormScreen({ role = "owner", onBack, onSuccess }) {
       // Try Supabase Auth: email convention is `<username>@dorm.local`
       const authUser = await tryAuth(`${u.toLowerCase()}@dorm.local`, p);
       if (authUser?.user_metadata?.role === "owner") {
-        onSuccess?.({ role: "owner", username: u, authId: authUser.id }); return;
+        onSuccess?.({ role: "owner", username: u, authId: authUser.id, staffRole: authUser.user_metadata.staffRole || "admin" }); return;
       }
-      // Fallback: local PIN check (dev/demo)
+      // Staff table check: any username in staff with matching password gets in with their role
+      const s = staff.find(x => x.username && x.username.toLowerCase() === u.toLowerCase());
+      if (s && p === s.password) {
+        onSuccess?.({ role: "owner", username: s.username, staffRole: s.role || "admin", staffName: s.name }); return;
+      }
+      // Legacy fallback: hardcoded admin + ownerPin (works even if staff table is empty)
       if (u === "admin" && p === (ownerPin || "admin1234")) {
-        onSuccess?.({ role: "owner", username: u }); return;
+        onSuccess?.({ role: "owner", username: u, staffRole: "admin" }); return;
       }
     } else {
       // Find local tenant by username/id/room for fallback path + Supabase Auth attempt
