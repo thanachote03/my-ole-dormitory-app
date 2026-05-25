@@ -260,16 +260,6 @@ export function LoginFormScreen({ role = "owner", onBack, onSuccess }) {
         เป็นครั้งแรก? <span style={{ color: "var(--brand)", fontWeight: 700, cursor: "pointer" }}>ติดต่อแอดมินเพื่อขอบัญชี</span>
       </div>
 
-      <div style={{ background: "var(--surface)", border: "1px dashed var(--line-2)", borderRadius: 12,
-        padding: "10px 14px", display: "flex", alignItems: "center", gap: 10 }}>
-        <IconSparkle size={14} stroke="var(--brand)"/>
-        <div style={{ flex: 1, fontSize: 11.5, color: "var(--ink-3)", lineHeight: 1.4 }}>
-          ทดลองใช้งาน:<br/>
-          <span className="num" style={{ color: "var(--ink)", fontWeight: 600 }}>
-            {role === "owner" ? `admin / ${ownerPin || "admin1234"}` : `${tenants[0]?.room || tenants[0]?.room_id || tenants[0]?.id || "T2"} / tenant`}
-          </span>
-        </div>
-      </div>
     </div>
   );
 }
