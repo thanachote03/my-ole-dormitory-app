@@ -59,10 +59,11 @@ export function LoginScreen({ onPick }) {
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", padding: "32px 28px 28px", background: "linear-gradient(170deg, var(--brand-soft) 0%, var(--bg) 60%)" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 56 }}>
-        <div style={{ width: 36, height: 36, borderRadius: 10, background: "var(--brand)", display: "flex", alignItems: "center", justifyContent: "center", color: "white" }}>
-          <IconBuilding size={20} strokeWidth={2}/>
+        <div style={{ width: 40, height: 40, borderRadius: 10, background: "var(--brand-soft)",
+          display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <DI.IconBee size={28}/>
         </div>
-        <div style={{ fontWeight: 700, fontSize: 16, letterSpacing: -0.2 }}>Baan<span style={{color:"var(--brand)"}}>.</span></div>
+        <div style={{ fontWeight: 700, fontSize: 16, letterSpacing: -0.2 }}>Bee<span style={{color:"var(--brand)"}}>.</span></div>
       </div>
 
       <div style={{ marginBottom: 36 }}>

@@ -49,6 +49,27 @@ export const IconDownload = (p) => <Icon {...p}><path d="M12 4v12M6 12l6 6 6-6M4
 export const IconFilter = (p) => <Icon {...p}><path d="M3 5h18l-7 9v6l-4-2v-4z"/></Icon>;
 export const IconKey = (p) => <Icon {...p}><circle cx="8" cy="14" r="4"/><path d="m11 12 9-9M16 7l3 3"/></Icon>;
 
+// Colored bee — used as the app brand mark. Doesn't follow the line-icon
+// template since it's intentionally a small illustration, not a stroke icon.
+export const IconBee = ({ size = 24, style }) => (
+  <svg width={size} height={size} viewBox="0 0 32 32" fill="none" style={style}>
+    {/* Antennae */}
+    <path d="M13 9 Q11 5 9.5 4.2" stroke="#1a1a1a" strokeWidth="1.4" strokeLinecap="round" fill="none"/>
+    <path d="M19 9 Q21 5 22.5 4.2" stroke="#1a1a1a" strokeWidth="1.4" strokeLinecap="round" fill="none"/>
+    <circle cx="9.5" cy="4.2" r="1.3" fill="#1a1a1a"/>
+    <circle cx="22.5" cy="4.2" r="1.3" fill="#1a1a1a"/>
+    {/* Wings */}
+    <ellipse cx="10.5" cy="12" rx="5" ry="3.6" fill="white" stroke="#1a1a1a" strokeWidth="1.3"/>
+    <ellipse cx="21.5" cy="12" rx="5" ry="3.6" fill="white" stroke="#1a1a1a" strokeWidth="1.3"/>
+    {/* Body */}
+    <ellipse cx="16" cy="20" rx="7.5" ry="9" fill="#F5C400" stroke="#1a1a1a" strokeWidth="1.3"/>
+    {/* Stripes */}
+    <path d="M9.5 17.5 Q16 16 22.5 17.5" stroke="#1a1a1a" strokeWidth="1.7" strokeLinecap="round" fill="none"/>
+    <path d="M9 22.5 Q16 21 23 22.5" stroke="#1a1a1a" strokeWidth="1.7" strokeLinecap="round" fill="none"/>
+    <path d="M11 27 Q16 25.8 21 27" stroke="#1a1a1a" strokeWidth="1.7" strokeLinecap="round" fill="none"/>
+  </svg>
+);
+
 export const DI = {
   IconHome, IconUser, IconUsers, IconWallet, IconCard, IconWrench, IconBuilding,
   IconChart, IconLock, IconBell, IconSearch, IconPlus, IconCheck, IconX,
@@ -56,7 +77,7 @@ export const DI = {
   IconSettings, IconLogout, IconSparkle, IconWifi, IconSnow, IconFridge,
   IconBalcony, IconTV, IconWasher, IconHanger, IconKitchen, IconCircle, IconDot,
   IconTrash, IconEdit, IconTrend, IconClock, IconBookmark, IconBack, IconStar,
-  IconDownload, IconFilter, IconKey,
+  IconDownload, IconFilter, IconKey, IconBee,
 };
 
 export const amenityIcon = (a) => ({

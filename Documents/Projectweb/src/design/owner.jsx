@@ -45,7 +45,10 @@ export function OwnerDesktop({ initialTab = "overview", staffRole = "admin", sta
       <div style={{ width: "100%", minHeight: "100vh", background: "var(--bg)", display: "flex", flexDirection: "column" }}>
         <div style={{ background: "var(--surface)", borderBottom: "1px solid var(--line)",
           padding: "12px 24px", display: "flex", alignItems: "center", gap: 12 }}>
-          <div style={{ fontWeight: 700, fontSize: 16 }}>Baan<span style={{ color: "var(--brand)" }}>.</span></div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <DI.IconBee size={22}/>
+            <div style={{ fontWeight: 700, fontSize: 16 }}>Bee<span style={{ color: "var(--brand)" }}>.</span></div>
+          </div>
           <div style={{ fontSize: 11, fontWeight: 700, color: "var(--brand)", background: "var(--brand-soft)",
             padding: "3px 10px", borderRadius: 100 }}>โหมดจดมิเตอร์</div>
           <div style={{ flex: 1, fontSize: 13, color: "var(--ink-3)" }}>
@@ -82,7 +85,9 @@ export function OwnerDesktop({ initialTab = "overview", staffRole = "admin", sta
             cursor: "pointer", color: "var(--ink-2)", flexShrink: 0 }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
           </button>
-          <div style={{ flex: 1, fontWeight: 700, fontSize: 15 }}>Baan<span style={{ color: "var(--brand)" }}>.</span></div>
+          <div style={{ flex: 1, fontWeight: 700, fontSize: 15, display: "flex", alignItems: "center", gap: 6 }}>
+            <DI.IconBee size={20}/> Bee<span style={{ color: "var(--brand)" }}>.</span>
+          </div>
           <button onClick={() => setShowSettings(true)} style={{ width: 34, height: 34, borderRadius: 9, background: "var(--bg)",
             border: "1px solid var(--line)", display: "flex", alignItems: "center", justifyContent: "center",
             cursor: "pointer", color: "var(--ink-2)" }}>
@@ -146,12 +151,12 @@ function Sidebar({ tab, setTab, onLogout, onSettings }) {
     <div style={{ width: 248, background: "var(--surface)", borderRight: "1px solid var(--line)",
       display: "flex", flexDirection: "column", padding: "22px 16px 16px", flexShrink: 0 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 6px 22px" }}>
-        <div style={{ width: 36, height: 36, borderRadius: 10, background: "var(--brand)",
+        <div style={{ width: 40, height: 40, borderRadius: 10, background: "var(--brand-soft)",
           display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <IconBuilding size={20} stroke="white" strokeWidth={2}/>
+          <DI.IconBee size={28}/>
         </div>
         <div>
-          <div style={{ fontWeight: 700, fontSize: 15, letterSpacing: -0.2 }}>{owner.dorm || "Baan"}<span style={{color:"var(--brand)"}}>.</span></div>
+          <div style={{ fontWeight: 700, fontSize: 15, letterSpacing: -0.2 }}>{owner.dorm || "Bee"}<span style={{color:"var(--brand)"}}>.</span></div>
           <div style={{ fontSize: 11, color: "var(--ink-3)" }}>เจ้าของหอพัก</div>
         </div>
       </div>
