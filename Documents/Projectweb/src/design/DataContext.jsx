@@ -54,22 +54,35 @@ export function DataProvider({ children }) {
   const [loaded, setLoaded] = useState(false);
 
   // Hydrate from Supabase; tables that don't exist or fail simply keep the seed.
+  // If Supabase has data, it REPLACES the seed (so the deployed app shows real data,
+  // not stale seed). Empty Supabase tables also wipe the seed — this matches production
+  // expectations where seed shouldn't leak through.
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const [r, t, p, rep, cfg] = await Promise.all([
+        const [r, t, p, rep, util, slip, bank, notif, cfg] = await Promise.all([
           supabase.from("rooms").select("*").order("id"),
           supabase.from("tenants").select("*").order("name"),
           supabase.from("payments").select("*"),
           supabase.from("repairs").select("*").order("created_at", { ascending: false }),
+          supabase.from("utilities").select("*"),
+          supabase.from("slips").select("*").order("created_at", { ascending: false }),
+          supabase.from("banks").select("*"),
+          supabase.from("notifs").select("*").order("created_at", { ascending: false }),
           supabase.from("config").select("*"),
         ]);
         if (cancelled) return;
-        if (r?.data?.length)   setRooms(r.data);
-        if (t?.data?.length)   setTenants(t.data.map(adaptTenant));
-        if (p?.data?.length)   setPayments(p.data);
-        if (rep?.data?.length) setRepairs(rep.data);
+        // Use server data when query succeeded (no error). Only keep seed if the table
+        // call itself errored — that way reality stays in sync with DB.
+        if (!r?.error    && r?.data)    setRooms(r.data);
+        if (!t?.error    && t?.data)    setTenants(t.data.map(adaptTenant));
+        if (!p?.error    && p?.data)    setPayments(p.data);
+        if (!rep?.error  && rep?.data)  setRepairs(rep.data);
+        if (!util?.error && util?.data) setUtils(util.data);
+        if (!slip?.error && slip?.data) setSlips(slip.data);
+        if (!bank?.error && bank?.data) setBanks(bank.data);
+        if (!notif?.error && notif?.data) setNotifs(notif.data);
         if (cfg?.data) {
           const pinRow = cfg.data.find(c => c.key === "owner_pin");
           if (pinRow?.value) setOwnerPin(pinRow.value);
@@ -191,17 +204,29 @@ export function DataProvider({ children }) {
   // This ensures readings survive tenant move-out and remain visible on vacant rooms.
   // Defined here (before bulkSaveUtils) to avoid temporal dead zone.
   const syncRoomMeter = useCallback((room_id, year, month, elec_cur, water_cur) => {
+    let didUpdate = false;
     setRooms(prev => prev.map(r => {
       if (r.id !== room_id) return r;
       const ly = r.lastMeterYear ?? -1;
       const lm = r.lastMeterMonth ?? -1;
       if (year < ly || (year === ly && month < lm)) return r;
+      didUpdate = true;
       return { ...r, lastElecMeter: elec_cur, lastWaterMeter: water_cur, lastMeterYear: year, lastMeterMonth: month };
     }));
+    // Persist to Supabase so the change survives page refresh / shows on other devices
+    if (didUpdate) {
+      try {
+        supabase.from("rooms").update({
+          lastElecMeter: elec_cur, lastWaterMeter: water_cur,
+          lastMeterYear: year, lastMeterMonth: month,
+        }).eq("id", room_id);
+      } catch {}
+    }
   }, []);
 
   const bulkSaveUtils = useCallback((readings) => {
     // readings: [{room_id, year, month, elec_cur, water_cur}, ...]
+    const dbRows = [];
     setUtils(prev => {
       const next = [...prev];
       for (const rd of readings) {
@@ -216,18 +241,23 @@ export function DataProvider({ children }) {
         const elec_use = Math.max(0, rd.elec_cur - elec_prev);
         const water_use = Math.max(0, rd.water_cur - water_prev);
         const row = {
-          id: Date.now() + Math.random(), room_id: rd.room_id, year: rd.year, month: rd.month,
+          room_id: rd.room_id, year: rd.year, month: rd.month,
           elec_prev, elec_cur: rd.elec_cur, elec_use, elec_amount: elec_use * UTIL_RATE.electric,
           water_prev, water_cur: rd.water_cur, water_use, water_amount: water_use * UTIL_RATE.water,
           read_at: new Date().toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" }),
         };
+        dbRows.push(row);
         const idx = next.findIndex(u => u.room_id === rd.room_id && u.year === rd.year && u.month === rd.month);
-        if (idx >= 0) next[idx] = row;
-        else next.push(row);
+        if (idx >= 0) next[idx] = { ...row, id: next[idx].id };
+        else next.push({ ...row, id: Date.now() + Math.random() });
       }
       return next;
     });
-    // Sync latest meter to each room record
+    // Persist all rows in one batch upsert
+    if (dbRows.length) {
+      try { supabase.from("utilities").upsert(dbRows, { onConflict: "room_id,year,month" }); } catch {}
+    }
+    // Sync latest meter to each room record (also persists to Supabase via syncRoomMeter)
     for (const rd of readings) {
       syncRoomMeter(rd.room_id, rd.year, rd.month, rd.elec_cur, rd.water_cur);
     }
@@ -399,10 +429,12 @@ export function DataProvider({ children }) {
       return prev.map(x => x.id === id ? { ...x, status: "approved" } : x);
     });
     setNotifs(prev => prev.filter(n => !(n.type === "slip" && n.link === "slips") || n.id.endsWith(id)));
+    try { supabase.from("slips").update({ status: "approved" }).eq("id", id); } catch {}
   }, [recordPayment]);
 
   const rejectSlip = useCallback((id) => {
     setSlips(prev => prev.map(x => x.id === id ? { ...x, status: "rejected" } : x));
+    try { supabase.from("slips").update({ status: "rejected" }).eq("id", id); } catch {}
   }, []);
 
   const deleteSlip = useCallback(async (id) => {
@@ -420,35 +452,53 @@ export function DataProvider({ children }) {
     };
     setSlips(prev => [row, ...prev]);
     const tenant = tenants.find(t => t.id === tenant_id);
-    setNotifs(prev => [{
+    const notif = {
       id: "N" + Date.now(), type: "slip", icon: "card",
       title: "ผู้เช่าแนบสลิปใหม่",
       msg: `${tenant?.name?.split(" ")[0] || tenant_id} (${room_id}) · ฿${amount?.toLocaleString?.() || amount}`,
       time: "เมื่อสักครู่", unread: true, link: "slips",
-    }, ...prev]);
+    };
+    setNotifs(prev => [notif, ...prev]);
+    // Persist to Supabase so owner sees the slip on next refresh / other devices
+    try {
+      supabase.from("slips").insert({
+        id, tenant_id, room_id, year, month, amount, bank,
+        image_url: imageUrl || null, filename: filename || null,
+        status: "pending",
+      });
+      supabase.from("notifs").insert({
+        id: notif.id, type: notif.type, title: notif.title, msg: notif.msg,
+        time: notif.time, unread: true, link: notif.link,
+      });
+    } catch {}
   }, [tenants]);
 
   // Save an initial "seed" meter reading (use=0, amount=0) for move-in day.
   // isInitial records are used as prev baseline when recording the first real billing month.
   const saveInitialReading = useCallback(({ room_id, year, month, elec_cur, water_cur }) => {
+    let savedRow = null;
     setUtils(prev => {
       const row = {
-        id: Date.now(), room_id, year, month,
+        room_id, year, month,
         elec_prev: 0, elec_cur, elec_use: 0, elec_amount: 0,
         water_prev: 0, water_cur, water_use: 0, water_amount: 0,
         isInitial: true,
         read_at: new Date().toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" }),
       };
-      // Only save if no real reading exists yet for this room/month
       const idx = prev.findIndex(u => u.room_id === room_id && u.year === year && u.month === month);
       if (idx >= 0 && !prev[idx].isInitial) return prev; // real reading already exists — don't overwrite
-      if (idx >= 0) { const copy = [...prev]; copy[idx] = row; return copy; }
-      return [...prev, row];
+      savedRow = row;
+      if (idx >= 0) { const copy = [...prev]; copy[idx] = { ...row, id: prev[idx].id }; return copy; }
+      return [...prev, { ...row, id: Date.now() }];
     });
+    if (savedRow) {
+      try { supabase.from("utilities").upsert(savedRow, { onConflict: "room_id,year,month" }); } catch {}
+    }
     syncRoomMeter(room_id, year, month, elec_cur, water_cur);
   }, [syncRoomMeter]);
 
   const saveUtilReading = useCallback(({ room_id, year, month, elec_cur, water_cur }) => {
+    let savedRow = null;
     setUtils(prev => {
       // Include strictly-earlier records AND initial records for the same month as baseline
       const prevForRoom = prev
@@ -463,15 +513,19 @@ export function DataProvider({ children }) {
       const elec_use = Math.max(0, elec_cur - elec_prev);
       const water_use = Math.max(0, water_cur - water_prev);
       const row = {
-        id: Date.now(), room_id, year, month,
+        room_id, year, month,
         elec_prev, elec_cur, elec_use, elec_amount: elec_use * UTIL_RATE.electric,
         water_prev, water_cur, water_use, water_amount: water_use * UTIL_RATE.water,
         read_at: new Date().toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" }),
       };
+      savedRow = row;
       const idx = prev.findIndex(u => u.room_id === room_id && u.year === year && u.month === month);
-      if (idx >= 0) { const copy = [...prev]; copy[idx] = row; return copy; }
-      return [...prev, row];
+      if (idx >= 0) { const copy = [...prev]; copy[idx] = { ...row, id: prev[idx].id }; return copy; }
+      return [...prev, { ...row, id: Date.now() }];
     });
+    if (savedRow) {
+      try { supabase.from("utilities").upsert(savedRow, { onConflict: "room_id,year,month" }); } catch {}
+    }
     syncRoomMeter(room_id, year, month, elec_cur, water_cur);
   }, [syncRoomMeter]);
 
@@ -531,19 +585,27 @@ export function DataProvider({ children }) {
   const addBank = useCallback((bank) => {
     const row = { id: "B" + Date.now(), ...bank };
     setBanks(prev => [...prev, row]);
+    try { supabase.from("banks").insert(row); } catch {}
     return row;
   }, []);
 
   const updateBank = useCallback((id, patch) => {
     setBanks(prev => prev.map(b => b.id === id ? { ...b, ...patch } : b));
+    try { supabase.from("banks").update(patch).eq("id", id); } catch {}
   }, []);
 
   const deleteBank = useCallback((id) => {
     setBanks(prev => prev.filter(b => b.id !== id));
+    try { supabase.from("banks").delete().eq("id", id); } catch {}
   }, []);
 
   const setPrimaryBank = useCallback((id) => {
     setBanks(prev => prev.map(b => ({ ...b, primary: b.id === id })));
+    // Atomic-ish: clear all primary flags then set the chosen one
+    try {
+      supabase.from("banks").update({ primary: false }).neq("id", id)
+        .then(() => supabase.from("banks").update({ primary: true }).eq("id", id));
+    } catch {}
   }, []);
 
   // Derive room status from tenant assignments so it can never drift out of sync.
