@@ -131,14 +131,15 @@ export function DataProvider({ children }) {
     });
   }, []);
 
-  const deleteTenant = useCallback((tenantId) => {
-    setTenants(prev => {
-      const cur = prev.find(t => t.id === tenantId);
-      if (cur) setRooms(rs => rs.map(r => r.id === cur.room ? { ...r, status: "ว่าง" } : r));
-      try { supabase.from("tenants").delete().eq("id", tenantId); } catch {}
-      return prev.filter(t => t.id !== tenantId);
-    });
-  }, []);
+  const deleteTenant = useCallback(async (tenantId) => {
+    const cur = tenants.find(t => t.id === tenantId);
+    if (cur?.room) setRooms(rs => rs.map(r => r.id === cur.room ? { ...r, status: "ว่าง" } : r));
+    setTenants(prev => prev.filter(t => t.id !== tenantId));
+    try {
+      await supabase.from("tenants").delete().eq("id", tenantId);
+      if (cur?.room) await supabase.from("rooms").update({ status: "ว่าง" }).eq("id", cur.room);
+    } catch {}
+  }, [tenants]);
 
   // Evict = end tenancy but keep tenant record + payment history intact.
   // The tenant's room becomes vacant; payments remain linked to room_id but
