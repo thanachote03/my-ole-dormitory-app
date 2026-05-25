@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS public.rooms (
   type            text         NOT NULL DEFAULT 'เดี่ยว',
   price           numeric(10,2) NOT NULL DEFAULT 0,
   status          text         NOT NULL DEFAULT 'ว่าง',  -- 'ว่าง' | 'ไม่ว่าง'
-  amenities       jsonb        NOT NULL DEFAULT '[]'::jsonb,
+  amenities       text[]       NOT NULL DEFAULT '{}'::text[],
   -- Meter readings persisted on room (survive tenant change)
   "lastElecMeter"  numeric(10,2),
   "lastWaterMeter" numeric(10,2),
@@ -21,6 +21,25 @@ CREATE TABLE IF NOT EXISTS public.rooms (
   "lastMeterMonth" int,
   created_at      timestamptz  NOT NULL DEFAULT now()
 );
+
+-- If table exists from older schema where amenities was jsonb, migrate to text[]
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+     WHERE table_schema='public' AND table_name='rooms' AND column_name='amenities' AND data_type='jsonb'
+  ) THEN
+    ALTER TABLE public.rooms ALTER COLUMN amenities TYPE text[]
+      USING ARRAY(SELECT jsonb_array_elements_text(amenities));
+    ALTER TABLE public.rooms ALTER COLUMN amenities SET DEFAULT '{}'::text[];
+  END IF;
+END $$;
+
+-- Backfill meter columns on older deployments missing them
+ALTER TABLE public.rooms ADD COLUMN IF NOT EXISTS "lastElecMeter"  numeric(10,2);
+ALTER TABLE public.rooms ADD COLUMN IF NOT EXISTS "lastWaterMeter" numeric(10,2);
+ALTER TABLE public.rooms ADD COLUMN IF NOT EXISTS "lastMeterYear"  int;
+ALTER TABLE public.rooms ADD COLUMN IF NOT EXISTS "lastMeterMonth" int;
 
 -- ─── 2) TENANTS ────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.tenants (
@@ -177,25 +196,25 @@ END $$;
 -- SEED DATA — initial demo content (idempotent)
 -- ═══════════════════════════════════════════════════════════════════════════
 
--- Rooms
+-- Rooms (amenities uses text[] — PostgreSQL native array syntax)
 INSERT INTO public.rooms (id, floor, type, price, status, amenities) VALUES
-  ('101', 1, 'เดี่ยว', 1200, 'ไม่ว่าง', '["แอร์","Wi-Fi"]'::jsonb),
-  ('102', 1, 'เดี่ยว', 1200, 'ไม่ว่าง', '["แอร์","Wi-Fi"]'::jsonb),
-  ('103', 1, 'เดี่ยว', 1200, 'ไม่ว่าง', '["แอร์","Wi-Fi","ตู้เย็น"]'::jsonb),
-  ('104', 1, 'เดี่ยว', 1200, 'ไม่ว่าง', '["แอร์","Wi-Fi","ตู้เย็น"]'::jsonb),
-  ('105', 1, 'เดี่ยว', 1200, 'ว่าง',    '["แอร์","Wi-Fi"]'::jsonb),
-  ('106', 1, 'เดี่ยว', 3500, 'ว่าง',    '["แอร์","Wi-Fi"]'::jsonb),
-  ('201', 2, 'คู่',    1500, 'ว่าง',    '["แอร์","Wi-Fi","ระเบียง"]'::jsonb),
-  ('202', 2, 'คู่',    1500, 'ว่าง',    '["แอร์","Wi-Fi","ระเบียง"]'::jsonb),
-  ('203', 2, 'คู่',    1500, 'ว่าง',    '["แอร์","Wi-Fi"]'::jsonb),
-  ('204', 2, 'คู่',    1500, 'ว่าง',    '["แอร์","Wi-Fi"]'::jsonb),
-  ('205', 2, 'คู่',    1500, 'ว่าง',    '["แอร์","Wi-Fi"]'::jsonb),
-  ('206', 2, 'คู่',    1500, 'ว่าง',    '["แอร์","Wi-Fi"]'::jsonb),
-  ('301', 3, 'สตูดิโอ', 2000, 'ว่าง',   '["แอร์","Wi-Fi","ตู้เย็น","ครัว"]'::jsonb),
-  ('302', 3, 'สตูดิโอ', 2000, 'ว่าง',   '["แอร์","Wi-Fi","ตู้เย็น"]'::jsonb),
-  ('303', 3, 'สตูดิโอ', 2000, 'ว่าง',   '["แอร์","Wi-Fi","ตู้เย็น"]'::jsonb),
-  ('305', 3, 'สตูดิโอ', 2000, 'ว่าง',   '["แอร์","Wi-Fi","ตู้เย็น"]'::jsonb),
-  ('306', 3, 'สตูดิโอ', 3500, 'ว่าง',   '["แอร์","Wi-Fi","ตู้เย็น","ครัว"]'::jsonb)
+  ('101', 1, 'เดี่ยว', 1200, 'ไม่ว่าง', ARRAY['แอร์','Wi-Fi']),
+  ('102', 1, 'เดี่ยว', 1200, 'ไม่ว่าง', ARRAY['แอร์','Wi-Fi']),
+  ('103', 1, 'เดี่ยว', 1200, 'ไม่ว่าง', ARRAY['แอร์','Wi-Fi','ตู้เย็น']),
+  ('104', 1, 'เดี่ยว', 1200, 'ไม่ว่าง', ARRAY['แอร์','Wi-Fi','ตู้เย็น']),
+  ('105', 1, 'เดี่ยว', 1200, 'ว่าง',    ARRAY['แอร์','Wi-Fi']),
+  ('106', 1, 'เดี่ยว', 3500, 'ว่าง',    ARRAY['แอร์','Wi-Fi']),
+  ('201', 2, 'คู่',    1500, 'ว่าง',    ARRAY['แอร์','Wi-Fi','ระเบียง']),
+  ('202', 2, 'คู่',    1500, 'ว่าง',    ARRAY['แอร์','Wi-Fi','ระเบียง']),
+  ('203', 2, 'คู่',    1500, 'ว่าง',    ARRAY['แอร์','Wi-Fi']),
+  ('204', 2, 'คู่',    1500, 'ว่าง',    ARRAY['แอร์','Wi-Fi']),
+  ('205', 2, 'คู่',    1500, 'ว่าง',    ARRAY['แอร์','Wi-Fi']),
+  ('206', 2, 'คู่',    1500, 'ว่าง',    ARRAY['แอร์','Wi-Fi']),
+  ('301', 3, 'สตูดิโอ', 2000, 'ว่าง',   ARRAY['แอร์','Wi-Fi','ตู้เย็น','ครัว']),
+  ('302', 3, 'สตูดิโอ', 2000, 'ว่าง',   ARRAY['แอร์','Wi-Fi','ตู้เย็น']),
+  ('303', 3, 'สตูดิโอ', 2000, 'ว่าง',   ARRAY['แอร์','Wi-Fi','ตู้เย็น']),
+  ('305', 3, 'สตูดิโอ', 2000, 'ว่าง',   ARRAY['แอร์','Wi-Fi','ตู้เย็น']),
+  ('306', 3, 'สตูดิโอ', 3500, 'ว่าง',   ARRAY['แอร์','Wi-Fi','ตู้เย็น','ครัว'])
 ON CONFLICT (id) DO NOTHING;
 
 -- Tenants (sample)
