@@ -378,14 +378,23 @@ export function DataProvider({ children }) {
         return !isFromNewPeriod;
       }));
 
-      // สร้าง payment เดือนปัจจุบันเป็น "รอชำระ"
+      // สร้าง payment "รอชำระ" ทุกเดือนตั้งแต่วันเข้าพักจนถึงเดือนปัจจุบัน
+      // เดิมสร้างแค่เดือนเดียวทำให้หน้ารายงานไม่เห็นยอดค้างของเดือนก่อนหน้า
+      // ขณะที่ tenant detail สร้าง virtual rows ทำให้ตัวเลข 2 หน้าไม่ตรงกัน
       const room = rooms.find(r => r.id === effectiveRoomId);
       const price = room?.price ?? 0;
+      const newRows = [];
+      let yy = startY, mm = startM, guard = 0;
+      while ((yy < CUR_Y || (yy === CUR_Y && mm <= CUR_M)) && guard < 120) {
+        newRows.push({ room_id: effectiveRoomId, year: yy, month: mm, amount: price, status: "รอชำระ", paid_at: null });
+        mm++; if (mm > 11) { mm = 0; yy++; }
+        guard++;
+      }
       setPayments(prev => {
-        const exists = prev.find(p => p.room_id === effectiveRoomId && p.year === CUR_Y && p.month === CUR_M);
-        if (exists) return prev;
-        const nextId = Math.max(0, ...prev.map(p => +p.id || 0)) + 1;
-        return [...prev, { id: nextId, room_id: effectiveRoomId, year: CUR_Y, month: CUR_M, amount: price, status: "รอชำระ", paid_at: null }];
+        const seen = new Set(prev.filter(p => p.room_id === effectiveRoomId).map(p => `${p.year}|${p.month}`));
+        const toAdd = newRows.filter(r => !seen.has(`${r.year}|${r.month}`));
+        let nextId = Math.max(0, ...prev.map(p => +p.id || 0)) + 1;
+        return [...prev, ...toAdd.map(r => ({ ...r, id: nextId++ }))];
       });
     }
 
@@ -417,10 +426,18 @@ export function DataProvider({ children }) {
           .delete()
           .eq("room_id", effectiveRoomId)
           .or(`year.gt.${startY},and(year.eq.${startY},month.gte.${startM})`);
-        await supabase.from("payments").upsert(
-          { room_id: effectiveRoomId, year: CUR_Y, month: CUR_M, amount: price, status: "รอชำระ", paid_at: null },
-          { onConflict: "room_id,year,month" }
-        );
+        // Upsert "รอชำระ" rows for EVERY month from move-in to current — keeps
+        // report and tenant-detail pages in sync.
+        const dbPayRows = [];
+        let yy2 = startY, mm2 = startM, guard2 = 0;
+        while ((yy2 < CUR_Y || (yy2 === CUR_Y && mm2 <= CUR_M)) && guard2 < 120) {
+          dbPayRows.push({ room_id: effectiveRoomId, year: yy2, month: mm2, amount: price, status: "รอชำระ", paid_at: null });
+          mm2++; if (mm2 > 11) { mm2 = 0; yy2++; }
+          guard2++;
+        }
+        if (dbPayRows.length) {
+          await supabase.from("payments").upsert(dbPayRows, { onConflict: "room_id,year,month" });
+        }
       }
     } catch (e) {
       console.error("[addTenant] network:", e?.message || e);

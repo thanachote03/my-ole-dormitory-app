@@ -332,7 +332,7 @@ function NotifDropdown({ notifs, onPick, onClose, onReadAll }) {
 
 // ─── OVERVIEW ──────────────────────────────────────────────────────────
 function Overview({ onOpenTenant, setTab ,onEditRoom }) {
-  const { tenants, rooms, payments, repairs, slips, curY, curM } = useData();
+  const { tenants, rooms, payments, repairs, slips, curY, curM, computePaymentTotal } = useData();
   const [viewY, setViewY] = useState(curY);
   const [viewM, setViewM] = useState(curM);
   const [showPicker, setShowPicker] = useState(false);
@@ -357,16 +357,45 @@ function Overview({ onOpenTenant, setTab ,onEditRoom }) {
   const pendingSlips = slips.filter(s => s.status === "pending");
   const occupied = rooms.filter(r => r.status === "ไม่ว่าง").length;
   const occRate = rooms.length ? Math.round(occupied / rooms.length * 100) : 0;
-  const monthRev = payments.filter(p => p.year === viewY && p.month === viewM && p.status === "ชำระแล้ว").reduce((s,p)=>s+p.amount, 0);
-  const monthDue = payments.filter(p => p.year === viewY && p.month === viewM && p.status === "รอชำระ").reduce((s,p)=>s+p.amount, 0);
-  const pendingCount = payments.filter(p => p.year === viewY && p.month === viewM && p.status === "รอชำระ").length;
+  // Synthesise virtual "รอชำระ" rows for months in a tenant's tenancy that
+  // have no real record. Required so KPIs match the tenant-detail view for
+  // tenants created before all-months-on-create was added.
+  const effectivePayments = (() => {
+    const realKey = new Set(payments.map(p => `${p.room_id}|${p.year}|${p.month}`));
+    const virtual = [];
+    tenants.forEach(t => {
+      const roomId = t.room || t.prevRoom;
+      if (!roomId || t.sinceY == null || t.sinceM == null) return;
+      const endY = t.evicted ? +t.evictedY : curY;
+      const endM = t.evicted ? +t.evictedM : curM;
+      const price = rooms.find(r => r.id === roomId)?.price || 0;
+      let y = +t.sinceY, m = +t.sinceM, guard = 0;
+      while ((y < endY || (y === endY && m <= endM)) && guard < 120) {
+        const k = `${roomId}|${y}|${m}`;
+        if (!realKey.has(k)) {
+          virtual.push({ id: `virt-${k}`, room_id: roomId, year: y, month: m,
+            amount: price, status: "รอชำระ", paid_at: null, _virtual: true });
+        }
+        m++; if (m > 11) { m = 0; y++; }
+        guard++;
+      }
+    });
+    return [...payments, ...virtual];
+  })();
+  // Revenue uses stored amount (already includes util at payment time).
+  // Due is recalculated via computePaymentTotal so rent + util matches tenant detail.
+  const monthRev = effectivePayments.filter(p => p.year === viewY && p.month === viewM && p.status === "ชำระแล้ว").reduce((s,p)=>s+p.amount, 0);
+  const monthDue = effectivePayments.filter(p => p.year === viewY && p.month === viewM && p.status === "รอชำระ")
+    .reduce((s,p) => s + (computePaymentTotal ? computePaymentTotal(p.room_id, p.year, p.month).total : p.amount), 0);
+  const pendingCount = effectivePayments.filter(p => p.year === viewY && p.month === viewM && p.status === "รอชำระ").length;
 
   const series = [];
   for (let i = 5; i >= 0; i--) {
     let y = viewY, m = viewM - i;
     while (m < 0) { m += 12; y--; }
-    const rev = payments.filter(p => p.year === y && p.month === m && p.status === "ชำระแล้ว").reduce((s,p)=>s+p.amount,0);
-    const due = payments.filter(p => p.year === y && p.month === m && p.status === "รอชำระ").reduce((s,p)=>s+p.amount,0);
+    const rev = effectivePayments.filter(p => p.year === y && p.month === m && p.status === "ชำระแล้ว").reduce((s,p)=>s+p.amount,0);
+    const due = effectivePayments.filter(p => p.year === y && p.month === m && p.status === "รอชำระ")
+      .reduce((s,p) => s + (computePaymentTotal ? computePaymentTotal(p.room_id, p.year, p.month).total : p.amount), 0);
     series.push({ y, m, rev, due });
   }
   const maxRev = Math.max(1, ...series.map(s => s.rev + s.due)) * 1.1;
@@ -562,9 +591,10 @@ function Overview({ onOpenTenant, setTab ,onEditRoom }) {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
         <Card title="ค้างชำระ" right={<a style={{ fontSize: 12, color: "var(--brand)", fontWeight: 600, cursor: "pointer" }}>ดูทั้งหมด →</a>}>
           <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            {tenants.filter(t => payments.find(p => p.room_id === t.room && p.year === viewY && p.month === viewM && p.status === "รอชำระ"))
+            {tenants.filter(t => effectivePayments.find(p => p.room_id === t.room && p.year === viewY && p.month === viewM && p.status === "รอชำระ"))
               .slice(0, 4).map(t => {
                 const room = rooms.find(r => r.id === t.room);
+                const dueTotal = computePaymentTotal ? computePaymentTotal(t.room, viewY, viewM).total : (room?.price || 0);
                 return (
                   <div key={t.id} className="lift" onClick={() => onOpenTenant?.(t)} style={{
                     padding: "10px 8px", display: "flex", alignItems: "center", gap: 12, cursor: "pointer",
@@ -576,7 +606,7 @@ function Overview({ onOpenTenant, setTab ,onEditRoom }) {
                       <div style={{ fontSize: 11.5, color: "var(--ink-3)" }}>ห้อง {t.room} · {room?.type}</div>
                     </div>
                     <div style={{ textAlign: "right" }}>
-                      <div className="num" style={{ fontSize: 13, fontWeight: 700, color: "var(--brand)" }}>{baht(room?.price || 0)}</div>
+                      <div className="num" style={{ fontSize: 13, fontWeight: 700, color: "var(--brand)" }}>{baht(dueTotal)}</div>
                       <div style={{ fontSize: 10.5, color: "var(--warn)", fontWeight: 700, marginTop: 2 }}>ค้าง</div>
                     </div>
                   </div>
@@ -1775,9 +1805,40 @@ function inputStyle() {
 
 // ─── HISTORY PAGE ───────────────────────────────────────────────────────
 function HistoryPage() {
-  const { payments, tenants, curY, curM } = useData();
+  const { payments, tenants, rooms, curY, curM, computePaymentTotal } = useData();
   const [year, setYear] = useState(curY);
   const [monthKey, setMonthKey] = useState(null);
+  // Pending rent stored in DB is rent-only; tenant detail bill = rent + util.
+  // Recalculate via computePaymentTotal so report matches tenant detail.
+  const fullAmount = (p) =>
+    computePaymentTotal ? computePaymentTotal(p.room_id, p.year, p.month).total : p.amount;
+
+  // Synthesise virtual "รอชำระ" rows for any month inside a tenant's tenancy
+  // that has no real payment record yet. Keeps the report in sync with the
+  // tenant-detail view (which shows virtual rows) even for tenants created
+  // before the all-months-on-create fix.
+  const effectivePayments = (() => {
+    const realKey = new Set(payments.map(p => `${p.room_id}|${p.year}|${p.month}`));
+    const virtual = [];
+    tenants.forEach(t => {
+      const roomId = t.room || t.prevRoom;
+      if (!roomId || t.sinceY == null || t.sinceM == null) return;
+      const endY = t.evicted ? +t.evictedY : curY;
+      const endM = t.evicted ? +t.evictedM : curM;
+      const price = rooms.find(r => r.id === roomId)?.price || 0;
+      let y = +t.sinceY, m = +t.sinceM, guard = 0;
+      while ((y < endY || (y === endY && m <= endM)) && guard < 120) {
+        const k = `${roomId}|${y}|${m}`;
+        if (!realKey.has(k)) {
+          virtual.push({ id: `virt-${k}`, room_id: roomId, year: y, month: m,
+            amount: price, status: "รอชำระ", paid_at: null, _virtual: true });
+        }
+        m++; if (m > 11) { m = 0; y++; }
+        guard++;
+      }
+    });
+    return [...payments, ...virtual];
+  })();
 
   // Helper: was this tenant living in the room during the given year/month?
   const wasInRoom = (t, y, m) => {
@@ -1793,14 +1854,16 @@ function HistoryPage() {
     (t.room === room_id || (t.evicted && t.prevRoom === room_id)) && wasInRoom(t, y, m)
   );
   // Only count payments where a tenant was actually living in the room — hides orphaned records
-  const validPayments = payments.filter(p => hadTenant(p.room_id, p.year, p.month));
+  const validPayments = effectivePayments.filter(p => hadTenant(p.room_id, p.year, p.month));
 
   const maxMonth = year === curY ? curM : 11;
   const months = [];
   for (let m = 0; m <= maxMonth; m++) {
     const ms = validPayments.filter(p => p.year === year && p.month === m);
+    // Revenue = what was actually paid (amount field already includes util at payment time)
     const rev = ms.filter(p => p.status === "ชำระแล้ว").reduce((s,p)=>s+p.amount, 0);
-    const due = ms.filter(p => p.status === "รอชำระ").reduce((s,p)=>s+p.amount, 0);
+    // Due = recalculated rent + util so it matches what tenant sees
+    const due = ms.filter(p => p.status === "รอชำระ").reduce((s,p) => s + fullAmount(p), 0);
     months.push({ m, rev, due, paid: ms.filter(p => p.status === "ชำระแล้ว").length, total: ms.length });
   }
   const total = months.reduce((s,m) => s + m.rev, 0);
