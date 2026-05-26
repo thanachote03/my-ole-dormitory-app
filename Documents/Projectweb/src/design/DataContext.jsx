@@ -197,19 +197,47 @@ export function DataProvider({ children }) {
     }
   }, [ownerUsername]);
 
-  const moveTenant = useCallback((tenantId, toRoom) => {
-    setTenants(prev => {
-      const cur = prev.find(t => t.id === tenantId);
-      if (!cur || cur.room === toRoom) return prev;
-      const fromRoom = cur.room;
-      setRooms(rs => rs.map(r => {
-        if (r.id === fromRoom) return { ...r, status: "ว่าง" };
-        if (r.id === toRoom)   return { ...r, status: "ไม่ว่าง" };
+  const moveTenant = useCallback(async (tenantId, toRoom) => {
+    const cur = tenants.find(t => t.id === tenantId);
+    if (!cur) return { ok: false, msg: "ไม่พบผู้เช่า" };
+    if (cur.room === toRoom) return { ok: true };  // no-op
+    const fromRoom = cur.room;
+
+    // Optimistic in-memory update — keep side-effects out of setState updater
+    setTenants(prev => prev.map(t => t.id === tenantId ? { ...t, room: toRoom } : t));
+    setRooms(prev => prev.map(r => {
+      if (r.id === fromRoom) return { ...r, status: "ว่าง" };
+      if (r.id === toRoom)   return { ...r, status: "ไม่ว่าง" };
+      return r;
+    }));
+
+    // Persist to Supabase; rollback if the tenant write fails
+    try {
+      const { error: tErr } = await supabase.from("tenants").update({ room_id: toRoom }).eq("id", tenantId);
+      if (tErr) {
+        console.error("[moveTenant] tenants:", tErr.message || tErr);
+        setTenants(prev => prev.map(t => t.id === tenantId ? { ...t, room: fromRoom } : t));
+        setRooms(prev => prev.map(r => {
+          if (r.id === fromRoom) return { ...r, status: fromRoom ? "ไม่ว่าง" : r.status };
+          if (r.id === toRoom)   return { ...r, status: "ว่าง" };
+          return r;
+        }));
+        return { ok: false, msg: tErr.message || "ย้ายห้องไม่สำเร็จ" };
+      }
+      if (fromRoom) await supabase.from("rooms").update({ status: "ว่าง" }).eq("id", fromRoom);
+      if (toRoom)   await supabase.from("rooms").update({ status: "ไม่ว่าง" }).eq("id", toRoom);
+    } catch (e) {
+      console.error("[moveTenant] network:", e?.message || e);
+      setTenants(prev => prev.map(t => t.id === tenantId ? { ...t, room: fromRoom } : t));
+      setRooms(prev => prev.map(r => {
+        if (r.id === fromRoom) return { ...r, status: fromRoom ? "ไม่ว่าง" : r.status };
+        if (r.id === toRoom)   return { ...r, status: "ว่าง" };
         return r;
       }));
-      return prev.map(t => t.id === tenantId ? { ...t, room: toRoom } : t);
-    });
-  }, []);
+      return { ok: false, msg: "เชื่อมต่อฐานข้อมูลไม่สำเร็จ" };
+    }
+    return { ok: true };
+  }, [tenants]);
 
   const deleteTenant = useCallback(async (tenantId) => {
     const cur = tenants.find(t => t.id === tenantId);
