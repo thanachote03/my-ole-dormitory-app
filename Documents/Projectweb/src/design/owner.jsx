@@ -2414,8 +2414,16 @@ function UtilityPage() {
                           color: "var(--ink-3)", borderRadius: 4, padding: "1px 5px", flexShrink: 0 }}>ว่าง</span>
                       )}
                     </div>
-                    <div className="num" style={{ fontSize: 11, color: "var(--ink-3)" }}>
-                      {occ && u ? `${u.elec_use + u.water_use} หน่วย · ${baht(effAmt(u))}` : meterLabel}
+                    <div className="num" style={{ fontSize: 11, color: "var(--ink-3)", display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+                      {occ && u ? (
+                        <>
+                          <span style={{ color: "oklch(0.55 0.15 80)", fontWeight: 600 }}>⚡ {u.elec_use} หน่วย</span>
+                          <span style={{ color: "var(--ink-4)" }}>·</span>
+                          <span style={{ color: "oklch(0.45 0.13 230)", fontWeight: 600 }}>💧 {u.water_use} หน่วย</span>
+                          <span style={{ color: "var(--ink-4)" }}>·</span>
+                          <span style={{ fontWeight: 700, color: "var(--ink)" }}>{baht(effAmt(u))}</span>
+                        </>
+                      ) : meterLabel}
                     </div>
                   </div>
                 </button>
