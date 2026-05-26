@@ -2709,6 +2709,16 @@ function UtilityPage() {
                     const eUse = Math.max(0, u.elec_cur - ePrev);
                     const wUse = Math.max(0, u.water_cur - wPrev);
 
+                    // If a regular reading is recorded for the tenant's move-in month and the
+                    // initial record was overwritten, surface the initial value (preserved in
+                    // u.elec_prev / u.water_prev) as a synthesized "เริ่มต้น" row underneath
+                    // this monthly row — that way the user sees BOTH the move-in baseline
+                    // and the monthly usage, matching the schema-less design.
+                    const showSynthInit = tenant
+                      && u.year === tenant.sinceY && u.month === tenant.sinceM
+                      && !initRec
+                      && (u.elec_prev != null || u.water_prev != null);
+
                     const hKey = `${u.year}-${u.month}`;
                     const isOpen = selHistM === hKey;
 
@@ -2727,7 +2737,7 @@ function UtilityPage() {
                       <div onClick={() => setSelHistM(isOpen ? null : hKey)}
                         style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 1fr 1fr 1fr 1fr",
                           padding: "12px 14px",
-                          borderBottom: isOpen ? "none" : notLast ? "1px solid var(--line)" : "none",
+                          borderBottom: isOpen ? "none" : (notLast || showSynthInit) ? "1px solid var(--line)" : "none",
                           background: isOpen ? "oklch(0.97 0.015 240)" : "var(--surface)",
                           fontSize: 13, alignItems: "center", cursor: "pointer",
                           transition: "background .15s" }}>
@@ -2804,6 +2814,23 @@ function UtilityPage() {
                             <span style={{ fontSize: 12.5, color: "var(--ink-3)", fontWeight: 600 }}>รวมทั้งหมด</span>
                             <span className="num" style={{ fontSize: 16, fontWeight: 800, color: "var(--ink)" }}>{baht(hEAmt + hWAmt)}</span>
                           </div>
+                        </div>
+                      )}
+                      {showSynthInit && (
+                        <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 1fr 1fr 1fr 1fr",
+                          padding: "10px 14px",
+                          borderBottom: notLast ? "1px solid var(--line)" : "none",
+                          background: "oklch(0.975 0.015 145)", fontSize: 13, alignItems: "center" }}>
+                          <span style={{ fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
+                            {dl(u.year, u.month)}
+                            <span style={{ fontSize: 10, fontWeight: 700, background: "oklch(0.88 0.08 145)",
+                              color: "oklch(0.35 0.1 145)", borderRadius: 5, padding: "2px 6px" }}>เริ่มต้น</span>
+                          </span>
+                          <span className="num" style={{ color: "var(--ink-3)" }}>— → <b style={{ color: "var(--ink)" }}>{u.elec_prev ?? 0}</b></span>
+                          <span style={{ color: "var(--ink-4)", fontSize: 11 }}>ฐาน</span>
+                          <span className="num" style={{ color: "var(--ink-3)" }}>— → <b style={{ color: "var(--ink)" }}>{u.water_prev ?? 0}</b></span>
+                          <span style={{ color: "var(--ink-4)", fontSize: 11 }}>ฐาน</span>
+                          <span className="num" style={{ textAlign: "right", color: "var(--ink-3)", fontSize: 11 }}>—</span>
                         </div>
                       )}
                     </Fragment>
