@@ -43,17 +43,28 @@ const LEGACY_KEY  = "bee_auth";         // keep for one-release migration
 function loadStoredAuth() {
   if (typeof window === "undefined") return null;
   try {
-    // sessionStorage first — always wins for this specific tab
+    // 1) sessionStorage — tab-specific, fastest path (set by setAuth on login or by steps 2-3 below)
     const sess = window.sessionStorage.getItem(SESSION_KEY);
     if (sess) return JSON.parse(sess);
-    // Fall back to persisted owner session (survives browser close/reopen)
-    const owner = window.localStorage.getItem(OWNER_KEY);
-    if (owner) return JSON.parse(owner);
-    // One-release legacy migration: move old key to new scheme then remove it
-    const legacy = window.localStorage.getItem(LEGACY_KEY);
-    if (legacy) {
-      const parsed = JSON.parse(legacy);
-      window.localStorage.removeItem(LEGACY_KEY);
+
+    // 2) localStorage owner key — survives browser restart.
+    //    Also warm sessionStorage so subsequent refreshes hit path 1.
+    const ownerRaw = window.localStorage.getItem(OWNER_KEY);
+    if (ownerRaw) {
+      window.sessionStorage.setItem(SESSION_KEY, ownerRaw); // ← warm this tab
+      return JSON.parse(ownerRaw);
+    }
+
+    // 3) Legacy migration (old "bee_auth" key written by previous code version).
+    //    Write to new keys so refreshes after migration keep working, then remove old key.
+    const legacyRaw = window.localStorage.getItem(LEGACY_KEY);
+    if (legacyRaw) {
+      const parsed = JSON.parse(legacyRaw);
+      window.sessionStorage.setItem(SESSION_KEY, legacyRaw);          // ← warm this tab
+      if (parsed?.role === "owner") {
+        window.localStorage.setItem(OWNER_KEY, legacyRaw);            // ← persist owner
+      }
+      window.localStorage.removeItem(LEGACY_KEY);                     // ← remove old key
       return parsed;
     }
   } catch {}
