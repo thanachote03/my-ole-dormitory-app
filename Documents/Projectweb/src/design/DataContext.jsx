@@ -214,28 +214,24 @@ export function DataProvider({ children }) {
   // ─── Helper: persist the latest meter values directly on the room record ──
   // This ensures readings survive tenant move-out and remain visible on vacant rooms.
   // Defined here (before bulkSaveUtils) to avoid temporal dead zone.
-  const syncRoomMeter = useCallback((room_id, year, month, elec_cur, water_cur) => {
-    let didUpdate = false;
+  const syncRoomMeter = useCallback(async (room_id, year, month, elec_cur, water_cur) => {
     setRooms(prev => prev.map(r => {
       if (r.id !== room_id) return r;
       const ly = r.lastMeterYear ?? -1;
       const lm = r.lastMeterMonth ?? -1;
       if (year < ly || (year === ly && month < lm)) return r;
-      didUpdate = true;
       return { ...r, lastElecMeter: elec_cur, lastWaterMeter: water_cur, lastMeterYear: year, lastMeterMonth: month };
     }));
     // Persist to Supabase so the change survives page refresh / shows on other devices
-    if (didUpdate) {
-      try {
-        supabase.from("rooms").update({
-          lastElecMeter: elec_cur, lastWaterMeter: water_cur,
-          lastMeterYear: year, lastMeterMonth: month,
-        }).eq("id", room_id);
-      } catch {}
-    }
+    try {
+      await supabase.from("rooms").update({
+        lastElecMeter: elec_cur, lastWaterMeter: water_cur,
+        lastMeterYear: year, lastMeterMonth: month,
+      }).eq("id", room_id);
+    } catch {}
   }, []);
 
-  const bulkSaveUtils = useCallback((readings) => {
+  const bulkSaveUtils = useCallback(async (readings) => {
     // readings: [{room_id, year, month, elec_cur, water_cur}, ...]
     const dbRows = [];
     setUtils(prev => {
@@ -266,7 +262,7 @@ export function DataProvider({ children }) {
     });
     // Persist all rows in one batch upsert
     if (dbRows.length) {
-      try { supabase.from("utilities").upsert(dbRows, { onConflict: "room_id,year,month" }); } catch {}
+      try { await supabase.from("utilities").upsert(dbRows, { onConflict: "room_id,year,month" }); } catch {}
     }
     // Sync latest meter to each room record (also persists to Supabase via syncRoomMeter)
     for (const rd of readings) {
@@ -506,7 +502,7 @@ export function DataProvider({ children }) {
 
   // Save an initial "seed" meter reading (use=0, amount=0) for move-in day.
   // isInitial records are used as prev baseline when recording the first real billing month.
-  const saveInitialReading = useCallback(({ room_id, year, month, elec_cur, water_cur }) => {
+  const saveInitialReading = useCallback(async ({ room_id, year, month, elec_cur, water_cur }) => {
     let savedRow = null;
     setUtils(prev => {
       const row = {
@@ -523,12 +519,12 @@ export function DataProvider({ children }) {
       return [...prev, { ...row, id: Date.now() }];
     });
     if (savedRow) {
-      try { supabase.from("utilities").upsert(savedRow, { onConflict: "room_id,year,month" }); } catch {}
+      try { await supabase.from("utilities").upsert(savedRow, { onConflict: "room_id,year,month" }); } catch {}
     }
     syncRoomMeter(room_id, year, month, elec_cur, water_cur);
   }, [syncRoomMeter]);
 
-  const saveUtilReading = useCallback(({ room_id, year, month, elec_cur, water_cur }) => {
+  const saveUtilReading = useCallback(async ({ room_id, year, month, elec_cur, water_cur }) => {
     let savedRow = null;
     setUtils(prev => {
       // Include strictly-earlier records AND initial records for the same month as baseline
@@ -557,7 +553,7 @@ export function DataProvider({ children }) {
       return [...prev, { ...row, id: Date.now() }];
     });
     if (savedRow) {
-      try { supabase.from("utilities").upsert(savedRow, { onConflict: "room_id,year,month" }); } catch {}
+      try { await supabase.from("utilities").upsert(savedRow, { onConflict: "room_id,year,month" }); } catch {}
     }
     syncRoomMeter(room_id, year, month, elec_cur, water_cur);
   }, [syncRoomMeter]);
