@@ -1277,7 +1277,7 @@ export function SettingsModal({ onClose }) {
             { id: "notify",   label: "การแจ้งเตือน", icon: IconBell },
             { id: "billing",  label: "ค่าน้ำ-ไฟ",   icon: IconSparkle },
             { id: "banks",    label: "บัญชีธนาคาร", icon: IconCard },
-            { id: "reset",    label: "รีเซ็ตข้อมูล", icon: IconTrash },
+            { id: "reset",    label: "ตั้งค่าโรงงาน", icon: IconTrash },
           ].map(s => {
             const Ic = s.icon;
             const active = section === s.id;
@@ -1718,22 +1718,42 @@ export function SettingsModal({ onClose }) {
   );
 }
 
-// ─── Reset data panel ───────────────────────────────────────────────────
+// ─── Factory reset panel ─────────────────────────────────────────────────
 function ResetDataPanel({ resetAllData, onClose }) {
-  const [step, setStep] = useState(0); // 0=info, 1=confirm, 2=running, 3=done
-  const [typed, setTyped] = useState("");
+  const { ownerPin, ownerUsername, staff } = useData();
+  // steps: 0=info  1=enter-password  2=confirm-word  3=running  4=done
+  const [step,      setStep]      = useState(0);
+  const [passInput, setPassInput] = useState("");
+  const [showPass,  setShowPass]  = useState(false);
+  const [passErr,   setPassErr]   = useState(false);
+  const [typed,     setTyped]     = useState("");
   const CONFIRM_WORD = "ยืนยันลบ";
 
-  const doReset = async () => {
-    setStep(2);
-    await resetAllData();
-    setStep(3);
+  // Validate password: match any admin staff account OR ownerPin config fallback
+  const checkPass = () => {
+    const adminUser = ownerUsername || "admin";
+    const staffMatch = staff.find(s =>
+      s.username.toLowerCase() === adminUser.toLowerCase() && s.password === passInput
+    );
+    const configMatch = passInput === (ownerPin || "admin1234");
+    if (staffMatch || configMatch) {
+      setPassErr(false); setStep(2);
+    } else {
+      setPassErr(true); setTimeout(() => setPassErr(false), 900);
+    }
   };
 
-  if (step === 3) return (
+  const doReset = async () => {
+    setStep(3);
+    await resetAllData();
+    setStep(4);
+  };
+
+  // ── Done ──
+  if (step === 4) return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16, padding: "32px 0" }}>
       <div style={{ fontSize: 48 }}>✅</div>
-      <div style={{ fontSize: 16, fontWeight: 700 }}>รีเซ็ตเรียบร้อยแล้ว</div>
+      <div style={{ fontSize: 16, fontWeight: 700 }}>ตั้งค่าโรงงานเรียบร้อยแล้ว</div>
       <div style={{ fontSize: 13, color: "var(--ink-3)", textAlign: "center", lineHeight: 1.6 }}>
         ลบข้อมูลทั้งหมดแล้ว · ระบบกลับสู่ค่าเริ่มต้นสมบูรณ์
       </div>
@@ -1744,7 +1764,8 @@ function ResetDataPanel({ resetAllData, onClose }) {
     </div>
   );
 
-  if (step === 2) return (
+  // ── Running ──
+  if (step === 3) return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16, padding: "40px 0" }}>
       <div style={{ width: 40, height: 40, border: "4px solid var(--danger)", borderTopColor: "transparent",
         borderRadius: "50%", animation: "spin 0.8s linear infinite" }}/>
@@ -1753,8 +1774,8 @@ function ResetDataPanel({ resetAllData, onClose }) {
   );
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      {/* Danger banner */}
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {/* ── Danger banner ── */}
       <div style={{ background: "var(--danger-soft)", border: "1.5px solid var(--danger)",
         borderRadius: 12, padding: "14px 16px", display: "flex", gap: 12, alignItems: "flex-start" }}>
         <span style={{ fontSize: 22, lineHeight: 1 }}>⚠️</span>
@@ -1769,39 +1790,101 @@ function ResetDataPanel({ resetAllData, onClose }) {
         </div>
       </div>
 
-      {/* After reset info */}
+      {/* ── Info banner ── */}
       <div style={{ background: "var(--info-soft)", border: "1px solid var(--info)",
         borderRadius: 12, padding: "12px 16px", display: "flex", gap: 10, alignItems: "center" }}>
         <span style={{ fontSize: 18 }}>ℹ️</span>
         <div style={{ fontSize: 12.5, color: "oklch(0.35 0.08 240)", lineHeight: 1.5 }}>
-          หลังรีเซ็ต ระบบจะกลับสู่ค่าเริ่มต้นสมบูรณ์ — ต้องตั้งค่าหอพัก เพิ่มห้อง และเพิ่มผู้เช่าใหม่ทั้งหมด
+          หลังตั้งค่าโรงงาน ระบบจะกลับสู่ค่าเริ่มต้นสมบูรณ์ — ต้องตั้งค่าหอพัก เพิ่มห้อง และเพิ่มผู้เช่าใหม่ทั้งหมด
         </div>
       </div>
 
+      {/* ── Step 0: Start button ── */}
       {step === 0 && (
         <button onClick={() => setStep(1)} style={{ background: "var(--danger)", color: "white",
           border: "none", borderRadius: 11, padding: "12px", fontWeight: 700, fontSize: 14,
           cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-          <IconTrash size={16} stroke="white"/> ดำเนินการรีเซ็ตข้อมูล
+          <IconTrash size={16} stroke="white"/> ดำเนินการตั้งค่าโรงงาน
         </button>
       )}
 
+      {/* ── Step 1: Password verification ── */}
       {step === 1 && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <div style={{ fontSize: 13, color: "var(--ink-2)", fontWeight: 600 }}>
-            พิมพ์ <b style={{ color: "var(--danger)" }}>{CONFIRM_WORD}</b> เพื่อยืนยัน
+        <div className={passErr ? "shake" : ""} style={{ display: "flex", flexDirection: "column", gap: 12,
+          padding: "14px 16px", background: "var(--surface-2)", borderRadius: 13, border: "1px solid var(--line)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <IconLock size={15} stroke="var(--danger)"/>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "var(--danger)" }}>
+              ยืนยันตัวตนก่อนดำเนินการ
+            </div>
+          </div>
+          <div style={{ fontSize: 12, color: "var(--ink-3)" }}>
+            กรอกรหัสผ่าน Admin เพื่อยืนยันว่าคุณต้องการตั้งค่าโรงงาน
+          </div>
+          <div style={{ position: "relative" }}>
+            <input
+              type={showPass ? "text" : "password"}
+              value={passInput}
+              onChange={e => setPassInput(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && passInput && checkPass()}
+              placeholder="รหัสผ่าน Admin"
+              autoFocus
+              style={{ width: "100%", padding: "11px 44px 11px 14px", borderRadius: 10, fontSize: 14,
+                border: `2px solid ${passErr ? "var(--danger)" : "var(--line)"}`,
+                outline: "none", background: "var(--surface)", color: "var(--ink)", boxSizing: "border-box",
+                fontFamily: "var(--font-num)", transition: "border-color .15s" }}
+            />
+            <button onClick={() => setShowPass(v => !v)} style={{
+              position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)",
+              width: 28, height: 28, border: "none", background: "transparent",
+              cursor: "pointer", color: "var(--ink-3)", fontSize: 11, fontWeight: 700,
+            }}>{showPass ? "ซ่อน" : "ดู"}</button>
+          </div>
+          {passErr && (
+            <div style={{ fontSize: 12, color: "var(--danger)", fontWeight: 600 }}>
+              รหัสผ่านไม่ถูกต้อง — กรุณาลองอีกครั้ง
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={() => { setStep(0); setPassInput(""); setPassErr(false); }}
+              style={{ flex: 1, padding: "10px", borderRadius: 10, border: "1px solid var(--line)",
+                background: "var(--surface)", fontWeight: 600, fontSize: 13, cursor: "pointer", color: "var(--ink-2)" }}>
+              ยกเลิก
+            </button>
+            <button onClick={checkPass} disabled={!passInput}
+              style={{ flex: 2, padding: "10px", borderRadius: 10, border: "none",
+                background: passInput ? "var(--danger)" : "var(--line)",
+                color: passInput ? "white" : "var(--ink-4)",
+                fontWeight: 700, fontSize: 13, cursor: passInput ? "pointer" : "not-allowed" }}>
+              ยืนยันรหัสผ่าน →
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Step 2: Confirm word ── */}
+      {step === 2 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12,
+          padding: "14px 16px", background: "var(--surface-2)", borderRadius: 13, border: "1px solid var(--line)" }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--danger)" }}>
+            ขั้นตอนสุดท้าย — ยืนยันการลบ
+          </div>
+          <div style={{ fontSize: 12.5, color: "var(--ink-2)" }}>
+            พิมพ์ <b style={{ color: "var(--danger)", letterSpacing: 1 }}>{CONFIRM_WORD}</b> เพื่อดำเนินการต่อ
           </div>
           <input
             value={typed} onChange={e => setTyped(e.target.value)}
             placeholder={CONFIRM_WORD}
+            autoFocus
             style={{ padding: "10px 14px", borderRadius: 10, fontSize: 15, fontWeight: 700,
               border: `2px solid ${typed === CONFIRM_WORD ? "var(--danger)" : "var(--line)"}`,
-              outline: "none", background: "var(--surface)", color: "var(--ink)" }}
+              outline: "none", background: "var(--surface)", color: "var(--ink)",
+              textAlign: "center", letterSpacing: 2 }}
           />
           <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={() => { setStep(0); setTyped(""); }}
+            <button onClick={() => { setStep(0); setTyped(""); setPassInput(""); }}
               style={{ flex: 1, padding: "10px", borderRadius: 10, border: "1px solid var(--line)",
-                background: "var(--surface-2)", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>
+                background: "var(--surface)", fontWeight: 600, fontSize: 13, cursor: "pointer", color: "var(--ink-2)" }}>
               ยกเลิก
             </button>
             <button onClick={doReset} disabled={typed !== CONFIRM_WORD}
@@ -1810,7 +1893,7 @@ function ResetDataPanel({ resetAllData, onClose }) {
                 color: typed === CONFIRM_WORD ? "white" : "var(--ink-4)",
                 fontWeight: 700, fontSize: 13, cursor: typed === CONFIRM_WORD ? "pointer" : "not-allowed",
                 transition: "background .2s" }}>
-              🗑️ ลบข้อมูลทั้งหมด
+              🗑️ ลบข้อมูลทั้งหมดถาวร
             </button>
           </div>
         </div>
