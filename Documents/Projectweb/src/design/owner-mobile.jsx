@@ -593,8 +593,12 @@ function MTenantDetail({ tenant, onBack, onEdit }) {
                   padding: "2px 8px", borderRadius: 100 }}>{paid ? "✓ ชำระแล้ว" : "⏳ รอชำระ"}</span>
                 {paid ? (
                   <button onClick={() => setReceiptPay(p)} style={{
-                    background: "transparent", border: "none", cursor: "pointer", fontSize: 12,
-                    color: "var(--ok)", fontWeight: 700, padding: 0 }}>🧾</button>
+                    display: "flex", alignItems: "center", gap: 4,
+                    background: "var(--ok-soft)", border: "1.5px solid var(--ok)",
+                    borderRadius: 10, cursor: "pointer",
+                    fontSize: 12.5, color: "var(--ok)", fontWeight: 700,
+                    padding: "5px 10px", whiteSpace: "nowrap",
+                  }}>🧾 ใบเสร็จ</button>
                 ) : (
                   !p._virtual ? null :
                   <button onClick={() => setConfirmPay(confirmPay?.id === p.id ? null : p)} style={{
