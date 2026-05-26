@@ -1547,12 +1547,16 @@ function MUtilHistoryPage({ onBack }) {
             );
 
             // Correct prev — strictly earlier (non-initial), or initial record for same month
-            const prRec = roomUtils
+            const prRec    = roomUtils
               .filter(x => !x.isInitial && (x.year < u.year || (x.year === u.year && x.month < u.month)))
               .sort((a, b) => b.year !== a.year ? b.year - a.year : b.month - a.month)[0];
-            const initRec = roomUtils.find(x => x.isInitial && x.year === u.year && x.month === u.month);
-            const ePrev = prRec?.elec_cur  ?? initRec?.elec_cur  ?? 0;
-            const wPrev = prRec?.water_cur ?? initRec?.water_cur ?? 0;
+            const initRec  = roomUtils.find(x => x.isInitial && x.year === u.year && x.month === u.month);
+            // Most-recent initial from ANY previous month (handles: initial in Apr → regular in May)
+            const initPrev = roomUtils
+              .filter(x => x.isInitial && (x.year < u.year || (x.year === u.year && x.month < u.month)))
+              .sort((a, b) => b.year !== a.year ? b.year - a.year : b.month - a.month)[0];
+            const ePrev = prRec?.elec_cur  ?? initRec?.elec_cur  ?? initPrev?.elec_cur  ?? 0;
+            const wPrev = prRec?.water_cur ?? initRec?.water_cur ?? initPrev?.water_cur ?? 0;
             const eUse  = Math.max(0, u.elec_cur - ePrev);
             const wUse  = Math.max(0, u.water_cur - wPrev);
 
@@ -1722,6 +1726,11 @@ function MUtilHistoryPage({ onBack }) {
           const wFlat = bm.waterFlat ?? billing.defaultWaterFlat ?? 0;
 
           if (!u && eMode === "metered" && wMode === "metered") {
+            // Check whether the most recent previous record is an isInitial baseline
+            const prevRec = utils
+              .filter(x => x.room_id === r.id && (x.year < viewY || (x.year === viewY && x.month < viewM)))
+              .sort((a, b) => b.year !== a.year ? b.year - a.year : b.month - a.month)[0];
+            const prevIsInit = prevRec?.isInitial === true;
             return (
               <div key={r.id} style={{ background: "var(--surface)", border: "1px solid var(--line)",
                 borderRadius: 14, overflow: "hidden" }}>
@@ -1739,8 +1748,17 @@ function MUtilHistoryPage({ onBack }) {
                   </div>
                   <span style={{ fontSize: 11, color: "var(--ink-4)" }}>▶</span>
                 </button>
-                <div style={{ padding: "10px 14px", fontSize: 12.5, color: "var(--ink-4)",
-                  fontWeight: 600, textAlign: "center" }}>ยังไม่ได้จดมิเตอร์เดือนนี้</div>
+                {prevIsInit ? (
+                  <div style={{ padding: "8px 14px", fontSize: 11.5, color: "oklch(0.48 0.12 60)",
+                    fontWeight: 600, background: "oklch(0.965 0.040 75)",
+                    borderTop: "1px solid oklch(0.88 0.08 75)", display: "flex", gap: 6, alignItems: "center" }}>
+                    <span>⚠️</span>
+                    <span>ค่าตั้งต้นเดือนก่อน — ยังไม่มีการจดมิเตอร์สิ้นเดือน</span>
+                  </div>
+                ) : (
+                  <div style={{ padding: "10px 14px", fontSize: 12.5, color: "var(--ink-4)",
+                    fontWeight: 600, textAlign: "center" }}>ยังไม่ได้จดมิเตอร์เดือนนี้</div>
+                )}
               </div>
             );
           }

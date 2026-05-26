@@ -2517,6 +2517,23 @@ function UtilityPage() {
                 </div>
               </div>
 
+              {/* ── Warning: last record is an isInitial from a previous month ─────── */}
+              {cur.isInitial && (cur.year < curY || (cur.year === curY && cur.month < curM)) && (
+                <div style={{ background: "oklch(0.960 0.045 75)", border: "1.5px solid oklch(0.84 0.10 75)",
+                  borderRadius: 14, padding: "12px 16px", display: "flex", gap: 10, alignItems: "flex-start" }}>
+                  <span style={{ fontSize: 18, lineHeight: 1 }}>⚠️</span>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "oklch(0.42 0.13 60)", marginBottom: 3 }}>
+                      ยังไม่มีการจดมิเตอร์สิ้นเดือน {MONTHS_TH[cur.month]} {cur.year}
+                    </div>
+                    <div style={{ fontSize: 12, color: "oklch(0.50 0.10 60)", lineHeight: 1.55 }}>
+                      ค่าตั้งต้น ({cur.elec_cur} / {cur.water_cur}) ถูกใช้เป็นฐาน
+                      — ถ้าเดือนนั้นผู้เช่าใช้ไฟ/น้ำ กรุณาจดค่าสิ้นเดือนก่อน แล้วจดเดือนปัจจุบันอีกครั้ง
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div style={{ background: "var(--brand-soft)", borderRadius: 18, padding: 20, border: "1px solid oklch(0.88 0.06 35)" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
                   <div>
@@ -2613,10 +2630,14 @@ function UtilityPage() {
                     const pr = roomUtils
                       .filter(x => !x.isInitial && (x.year < u.year || (x.year === u.year && x.month < u.month)))
                       .sort((a, b) => b.year !== a.year ? b.year - a.year : b.month - a.month)[0];
-                    // Also check initial record for same month as baseline
-                    const initRec = roomUtils.find(x => x.isInitial && x.year === u.year && x.month === u.month);
-                    const ePrev = pr?.elec_cur ?? initRec?.elec_cur ?? 0;
-                    const wPrev = pr?.water_cur ?? initRec?.water_cur ?? 0;
+                    // Same-month initial (tenant moved in this exact month)
+                    const initRec  = roomUtils.find(x => x.isInitial && x.year === u.year && x.month === u.month);
+                    // Most-recent initial from ANY previous month (handles: initial in Apr, regular in May → no pr)
+                    const initPrev = roomUtils
+                      .filter(x => x.isInitial && (x.year < u.year || (x.year === u.year && x.month < u.month)))
+                      .sort((a, b) => b.year !== a.year ? b.year - a.year : b.month - a.month)[0];
+                    const ePrev = pr?.elec_cur ?? initRec?.elec_cur ?? initPrev?.elec_cur ?? 0;
+                    const wPrev = pr?.water_cur ?? initRec?.water_cur ?? initPrev?.water_cur ?? 0;
                     const eUse = Math.max(0, u.elec_cur - ePrev);
                     const wUse = Math.max(0, u.water_cur - wPrev);
 
