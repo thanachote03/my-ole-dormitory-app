@@ -120,7 +120,14 @@ export function OwnerMobile({ initialTab = "overview", staffRole = "admin", staf
               onViewExTenants={() => setSubPage("extenants")}/>)}
         {tab === "rooms"    && (roomId
           ? <MRoomDetail roomId={roomId} onBack={() => setRoomId(null)}
-              onMove={(tid, to) => { moveTenant(tid, to); setRoomId(to); }}
+              onMove={async (tid, to) => {
+                const res = await moveTenant(tid, to);
+                if (res?.ok === false) {
+                  alert(`ย้ายห้องไม่สำเร็จ — ${res.msg}\n\nกรุณากด F12 ตรวจ Console เพื่อดูรายละเอียด`);
+                  return;
+                }
+                setRoomId(to);
+              }}
               onAddTenant={(rid) => { setAddTenantRoom(rid); setAddOpen(true); }}/>
           : <MRoomsList onPick={(rid) => setRoomId(rid)}/>)}
         {tab === "more"     && <MMorePage onBulk={() => setBulkOpen(true)} setTab={handleTabChange}

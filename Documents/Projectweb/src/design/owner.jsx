@@ -1521,7 +1521,14 @@ function RoomsPage({ onOpenTenant }) {
       {showAdd && <AddRoomModal onClose={() => setShowAdd(false)}/>}
       {roomDetail && <RoomDetailModal roomId={roomDetail}
         onClose={() => setRoomDetail(null)}
-        onMove={(tid, to) => { moveTenant(tid, to); setRoomDetail(to); }}
+        onMove={async (tid, to) => {
+          const res = await moveTenant(tid, to);
+          if (res?.ok === false) {
+            alert(`ย้ายห้องไม่สำเร็จ — ${res.msg}\n\nกรุณากด F12 ตรวจ Console เพื่อดูรายละเอียด`);
+            return;
+          }
+          setRoomDetail(to);
+        }}
         onTenant={(t) => { setRoomDetail(null); onOpenTenant && onOpenTenant(t); }}
         onAddTenant={(rid) => { setRoomDetail(null); setAddTenantRoom(rid); }}/>}
       {addTenantRoom && <AddTenantModal initialRoom={addTenantRoom} onClose={() => setAddTenantRoom(null)}/>}
