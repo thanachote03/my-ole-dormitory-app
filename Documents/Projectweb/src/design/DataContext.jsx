@@ -715,9 +715,10 @@ export function DataProvider({ children }) {
     try { await supabase.from("staff").delete().eq("id", id); } catch {}
   }, []);
 
-  // ─── Reset: clear all operational data, keep rooms skeleton ────────────
+  // ─── Reset: wipe ALL data (rooms, profile, everything) back to blank ───
   const resetAllData = useCallback(async () => {
     // 1. Reset in-memory state immediately (UI feels instant)
+    setRooms([]);
     setTenants([]);
     setPayments([]);
     setSlips([]);
@@ -726,23 +727,18 @@ export function DataProvider({ children }) {
     setBanks([]);
     setStaff([]);
     setNotifs([]);
-    setRooms(prev => prev.map(r => ({
-      ...r, status: "ว่าง",
-      lastElecMeter: null, lastWaterMeter: null,
-      lastMeterYear: null, lastMeterMonth: null,
-    })));
     setOwnerState(DEFAULT_OWNER);
-    setBilling(SEED_BILLING);
+    setBilling({ defaultElecFlat: 0, defaultWaterFlat: 0, monthly: {} });
     setOwnerPin("admin1234");
 
-    // 2. Clear former-tenant histories from localStorage
+    // 2. Clear all localStorage (former-tenant histories + any cached keys)
     try {
       Object.keys(localStorage)
-        .filter(k => k.startsWith("baan_history_"))
+        .filter(k => k.startsWith("baan_"))
         .forEach(k => localStorage.removeItem(k));
     } catch {}
 
-    // 3. Persist to Supabase (delete all rows; neq/gt used as "match everything" filter)
+    // 3. Wipe everything in Supabase
     try {
       await Promise.all([
         supabase.from("tenants")  .delete().neq("id", "___x___"),
@@ -754,11 +750,7 @@ export function DataProvider({ children }) {
         supabase.from("staff")    .delete().neq("id", "___x___"),
         supabase.from("notifs")   .delete().neq("id", "___x___"),
         supabase.from("config")   .delete().neq("key", "___x___"),
-        supabase.from("rooms").update({
-          status: "ว่าง",
-          lastElecMeter: null, lastWaterMeter: null,
-          lastMeterYear: null, lastMeterMonth: null,
-        }).neq("id", "___x___"),
+        supabase.from("rooms")    .delete().neq("id", "___x___"),
       ]);
     } catch (e) {
       console.warn("[resetAllData] Supabase error:", e?.message);

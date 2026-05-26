@@ -1567,7 +1567,7 @@ function ResetDataPanel({ resetAllData, onClose }) {
       <div style={{ fontSize: 48 }}>✅</div>
       <div style={{ fontSize: 16, fontWeight: 700 }}>รีเซ็ตเรียบร้อยแล้ว</div>
       <div style={{ fontSize: 13, color: "var(--ink-3)", textAlign: "center", lineHeight: 1.6 }}>
-        ลบข้อมูลทั้งหมดแล้ว · ห้องพักยังคงอยู่ · ระบบพร้อมใช้งานใหม่
+        ลบข้อมูลทั้งหมดแล้ว · ระบบกลับสู่ค่าเริ่มต้นสมบูรณ์
       </div>
       <button onClick={onClose} style={{ marginTop: 8, background: "var(--brand)", color: "white",
         border: "none", borderRadius: 11, padding: "11px 28px", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>
@@ -1595,19 +1595,18 @@ function ResetDataPanel({ resetAllData, onClose }) {
             คำเตือน: การกระทำนี้ไม่สามารถยกเลิกได้
           </div>
           <div style={{ fontSize: 12.5, color: "oklch(0.45 0.12 25)", lineHeight: 1.6 }}>
-            ข้อมูลที่จะถูกลบ: ผู้เช่าทั้งหมด · ผู้เช่าเก่า · การชำระเงิน · สลิป ·
-            มิเตอร์น้ำ-ไฟ · แจ้งซ่อม · บัญชีธนาคาร · พนักงาน · การตั้งค่าทั้งหมด
+            ข้อมูลที่จะถูกลบ <b>ทั้งหมด</b>: ห้องพัก · ผู้เช่า · ผู้เช่าเก่า · การชำระเงิน · สลิป ·
+            มิเตอร์น้ำ-ไฟ · แจ้งซ่อม · บัญชีธนาคาร · พนักงาน · โปรไฟล์เจ้าของหอ · ข้อมูลหอพัก
           </div>
         </div>
       </div>
 
-      {/* What's kept */}
-      <div style={{ background: "var(--ok-soft)", border: "1px solid var(--ok)",
+      {/* After reset info */}
+      <div style={{ background: "var(--info-soft)", border: "1px solid var(--info)",
         borderRadius: 12, padding: "12px 16px", display: "flex", gap: 10, alignItems: "center" }}>
-        <span style={{ fontSize: 18 }}>🏠</span>
-        <div style={{ fontSize: 12.5, color: "oklch(0.35 0.1 155)", lineHeight: 1.5 }}>
-          <b>ข้อมูลที่จะยังคงอยู่:</b> รายการห้องพักทั้งหมด (หมายเลขห้อง ชั้น ราคา)
-          ห้องทุกห้องจะถูกเปลี่ยนสถานะเป็น <b>"ว่าง"</b>
+        <span style={{ fontSize: 18 }}>ℹ️</span>
+        <div style={{ fontSize: 12.5, color: "oklch(0.35 0.08 240)", lineHeight: 1.5 }}>
+          หลังรีเซ็ต ระบบจะกลับสู่ค่าเริ่มต้นสมบูรณ์ — ต้องตั้งค่าหอพัก เพิ่มห้อง และเพิ่มผู้เช่าใหม่ทั้งหมด
         </div>
       </div>
 
