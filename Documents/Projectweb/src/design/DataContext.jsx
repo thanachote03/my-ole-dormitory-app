@@ -46,6 +46,18 @@ const DEFAULT_OWNER = {
   notifySms: true,
 };
 
+// Used by factory reset — personal fields wiped to blank, structural defaults kept.
+const BLANK_OWNER = {
+  name: "", displayName: "", dorm: "", address: "", phone: "", email: "",
+  dueDay: 5, billDay: 25, numFloors: 5,
+  roomTypes:   ["เดี่ยว", "คู่", "สตูดิโอ"],
+  amenityOpts: ["แอร์", "ตู้เย็น", "Wi-Fi", "ระเบียง", "ครัว", "เครื่องซัก", "เคเบิล TV", "ตู้เสื้อผ้า"],
+  notifyEmail: true, notifySms: true,
+};
+
+// Default admin account restored after factory reset
+const DEFAULT_ADMIN = { id: "S1", username: "admin", password: "admin1234", role: "admin", name: "" };
+
 export function DataProvider({ children }) {
   // Start with empty state — prevents flash of demo/seed data before Supabase loads.
   // SEED_* data is used only as an offline fallback (see catch block below).
@@ -805,6 +817,8 @@ export function DataProvider({ children }) {
   // ─── Reset: wipe ALL data (rooms, profile, everything) back to blank ───
   const resetAllData = useCallback(async () => {
     // 1. Reset in-memory state immediately (UI feels instant)
+    //    Use BLANK_OWNER (not DEFAULT_OWNER) so personal fields are truly empty after reset.
+    //    Restore a clean admin account so the accounts list isn't empty.
     setRooms([]);
     setTenants([]);
     setPayments([]);
@@ -812,9 +826,9 @@ export function DataProvider({ children }) {
     setUtils([]);
     setRepairs([]);
     setBanks([]);
-    setStaff([]);
+    setStaff([DEFAULT_ADMIN]);    // keep one admin so accounts page isn't empty
     setNotifs([]);
-    setOwnerState(DEFAULT_OWNER);
+    setOwnerState(BLANK_OWNER);   // blank personal fields (not demo data)
     setBilling({ defaultElecFlat: 0, defaultWaterFlat: 0, monthly: {} });
     setOwnerPin("admin1234");
     setOwnerUsername("admin");
@@ -827,12 +841,14 @@ export function DataProvider({ children }) {
     } catch {}
 
     // 3. Wipe everything in Supabase
+    //    Fix: slips.id is TEXT ("SL…") — must use .neq, not .gt(0) which fails on text columns.
+    //         payments/utilities.id is bigserial — .gte(0) is correct.
     try {
       await Promise.all([
         supabase.from("tenants")  .delete().neq("id", "___x___"),
-        supabase.from("payments") .delete().gt("id", 0),
-        supabase.from("slips")    .delete().gt("id", 0),
-        supabase.from("utilities").delete().gt("id", 0),
+        supabase.from("payments") .delete().gte("id", 0),             // bigserial ✓
+        supabase.from("slips")    .delete().neq("id", "___x___"),     // text id — fixed from .gt(0)
+        supabase.from("utilities").delete().gte("id", 0),             // bigserial ✓
         supabase.from("repairs")  .delete().neq("id", "___x___"),
         supabase.from("banks")    .delete().neq("id", "___x___"),
         supabase.from("staff")    .delete().neq("id", "___x___"),
@@ -841,7 +857,24 @@ export function DataProvider({ children }) {
         supabase.from("rooms")    .delete().neq("id", "___x___"),
       ]);
     } catch (e) {
-      console.warn("[resetAllData] Supabase error:", e?.message);
+      console.warn("[resetAllData] Supabase wipe error:", e?.message);
+    }
+
+    // 4. Re-seed the default admin account so login always works after reset
+    try {
+      await supabase.from("staff").upsert(DEFAULT_ADMIN, { onConflict: "id" });
+    } catch (e) {
+      console.warn("[resetAllData] admin re-seed error:", e?.message);
+    }
+
+    // 5. Re-seed default config so credentials survive a page refresh
+    try {
+      await supabase.from("config").upsert([
+        { key: "owner_pin",      value: "admin1234" },
+        { key: "owner_username", value: "admin" },
+      ]);
+    } catch (e) {
+      console.warn("[resetAllData] config re-seed error:", e?.message);
     }
   }, []);
 
