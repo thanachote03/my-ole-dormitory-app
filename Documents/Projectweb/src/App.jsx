@@ -1,7 +1,7 @@
 // Dormitory · Soft Pastel Redesign — entry shell
 import { useEffect, useState } from "react";
 import { DataProvider } from "./design/DataContext";
-import { Phone, LoginScreen, LoginFormScreen, TenantApp } from "./design/mobile";
+import { LoginScreen, LoginFormScreen, TenantApp } from "./design/mobile";
 import { OwnerDesktop } from "./design/owner";
 import { OwnerMobile } from "./design/owner-mobile";
 import { supabase } from "./supabaseClient";
@@ -67,12 +67,15 @@ function Shell() {
 }
 
 function MobileCanvas({ children }) {
+  // Render the screen full-viewport — no iPhone frame chrome.
+  // The inner screens use flex:1 to grow, so a flex column min-height:100vh
+  // parent is all they need.
   return (
     <div style={{
-      minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
-      padding: "20px", background: "var(--bg)",
+      minHeight: "100vh", display: "flex", flexDirection: "column",
+      background: "var(--bg)",
     }}>
-      <Phone>{children}</Phone>
+      {children}
     </div>
   );
 }
