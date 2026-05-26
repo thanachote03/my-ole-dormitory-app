@@ -342,9 +342,10 @@ export function DataProvider({ children }) {
           .delete()
           .eq("room_id", effectiveRoomId)
           .or(`year.gt.${startY},and(year.eq.${startY},month.gte.${startM})`);
-        await supabase.from("payments").upsert({
-          room_id: effectiveRoomId, year: CUR_Y, month: CUR_M, amount: price, status: "รอชำระ", paid_at: null,
-        });
+        await supabase.from("payments").upsert(
+          { room_id: effectiveRoomId, year: CUR_Y, month: CUR_M, amount: price, status: "รอชำระ", paid_at: null },
+          { onConflict: "room_id,year,month" }
+        );
       }
     } catch {}
     return adapted;
@@ -430,7 +431,12 @@ export function DataProvider({ children }) {
       }
       return [...prev, row];
     });
-    try { await supabase.from("payments").upsert({ room_id, year, month, amount, status: "ชำระแล้ว", paid_at }); } catch {}
+    try {
+      await supabase.from("payments").upsert(
+        { room_id, year, month, amount, status: "ชำระแล้ว", paid_at },
+        { onConflict: "room_id,year,month" }
+      );
+    } catch {}
   }, []);
 
   const approveSlip = useCallback(async (id) => {
