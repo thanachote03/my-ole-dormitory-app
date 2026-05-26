@@ -1180,7 +1180,7 @@ function SettingsFooter({ onCancel, onSave, label }) {
 
 export function SettingsModal({ onClose }) {
   const { owner, updateOwner, banks, addBank, updateBank, deleteBank, setPrimaryBank,
-    staff, addStaff, updateStaff, deleteStaff } = useData();
+    staff, addStaff, updateStaff, deleteStaff, resetAllData } = useData();
   const [section, setSection] = useState("profile");
   const [name, setName] = useState(owner.name);
   const [displayName, setDisplayName] = useState(owner.displayName);
@@ -1260,6 +1260,7 @@ export function SettingsModal({ onClose }) {
             { id: "billing",  label: "ค่าน้ำ-ไฟ",   icon: IconSparkle },
             { id: "banks",    label: "บัญชีธนาคาร", icon: IconCard },
             { id: "staff",    label: "ทีมงาน",      icon: IconUsers },
+            { id: "reset",    label: "รีเซ็ตข้อมูล", icon: IconTrash },
           ].map(s => {
             const Ic = s.icon;
             const active = section === s.id;
@@ -1539,9 +1540,115 @@ export function SettingsModal({ onClose }) {
           {section === "staff" && (
             <StaffSettings staff={staff} addStaff={addStaff} updateStaff={updateStaff} deleteStaff={deleteStaff}/>
           )}
+
+          {section === "reset" && (
+            <ResetDataPanel resetAllData={resetAllData} onClose={onClose}/>
+          )}
         </div>
       </div>
     </ModalShell>
+  );
+}
+
+// ─── Reset data panel ───────────────────────────────────────────────────
+function ResetDataPanel({ resetAllData, onClose }) {
+  const [step, setStep] = useState(0); // 0=info, 1=confirm, 2=running, 3=done
+  const [typed, setTyped] = useState("");
+  const CONFIRM_WORD = "ยืนยันลบ";
+
+  const doReset = async () => {
+    setStep(2);
+    await resetAllData();
+    setStep(3);
+  };
+
+  if (step === 3) return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16, padding: "32px 0" }}>
+      <div style={{ fontSize: 48 }}>✅</div>
+      <div style={{ fontSize: 16, fontWeight: 700 }}>รีเซ็ตเรียบร้อยแล้ว</div>
+      <div style={{ fontSize: 13, color: "var(--ink-3)", textAlign: "center", lineHeight: 1.6 }}>
+        ลบข้อมูลทั้งหมดแล้ว · ห้องพักยังคงอยู่ · ระบบพร้อมใช้งานใหม่
+      </div>
+      <button onClick={onClose} style={{ marginTop: 8, background: "var(--brand)", color: "white",
+        border: "none", borderRadius: 11, padding: "11px 28px", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>
+        ปิดและใช้งาน
+      </button>
+    </div>
+  );
+
+  if (step === 2) return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16, padding: "40px 0" }}>
+      <div style={{ width: 40, height: 40, border: "4px solid var(--danger)", borderTopColor: "transparent",
+        borderRadius: "50%", animation: "spin 0.8s linear infinite" }}/>
+      <div style={{ fontSize: 14, color: "var(--ink-2)", fontWeight: 600 }}>กำลังล้างข้อมูล…</div>
+    </div>
+  );
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {/* Danger banner */}
+      <div style={{ background: "var(--danger-soft)", border: "1.5px solid var(--danger)",
+        borderRadius: 12, padding: "14px 16px", display: "flex", gap: 12, alignItems: "flex-start" }}>
+        <span style={{ fontSize: 22, lineHeight: 1 }}>⚠️</span>
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "var(--danger)", marginBottom: 4 }}>
+            คำเตือน: การกระทำนี้ไม่สามารถยกเลิกได้
+          </div>
+          <div style={{ fontSize: 12.5, color: "oklch(0.45 0.12 25)", lineHeight: 1.6 }}>
+            ข้อมูลที่จะถูกลบ: ผู้เช่าทั้งหมด · ผู้เช่าเก่า · การชำระเงิน · สลิป ·
+            มิเตอร์น้ำ-ไฟ · แจ้งซ่อม · บัญชีธนาคาร · พนักงาน · การตั้งค่าทั้งหมด
+          </div>
+        </div>
+      </div>
+
+      {/* What's kept */}
+      <div style={{ background: "var(--ok-soft)", border: "1px solid var(--ok)",
+        borderRadius: 12, padding: "12px 16px", display: "flex", gap: 10, alignItems: "center" }}>
+        <span style={{ fontSize: 18 }}>🏠</span>
+        <div style={{ fontSize: 12.5, color: "oklch(0.35 0.1 155)", lineHeight: 1.5 }}>
+          <b>ข้อมูลที่จะยังคงอยู่:</b> รายการห้องพักทั้งหมด (หมายเลขห้อง ชั้น ราคา)
+          ห้องทุกห้องจะถูกเปลี่ยนสถานะเป็น <b>"ว่าง"</b>
+        </div>
+      </div>
+
+      {step === 0 && (
+        <button onClick={() => setStep(1)} style={{ background: "var(--danger)", color: "white",
+          border: "none", borderRadius: 11, padding: "12px", fontWeight: 700, fontSize: 14,
+          cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+          <IconTrash size={16} stroke="white"/> ดำเนินการรีเซ็ตข้อมูล
+        </button>
+      )}
+
+      {step === 1 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ fontSize: 13, color: "var(--ink-2)", fontWeight: 600 }}>
+            พิมพ์ <b style={{ color: "var(--danger)" }}>{CONFIRM_WORD}</b> เพื่อยืนยัน
+          </div>
+          <input
+            value={typed} onChange={e => setTyped(e.target.value)}
+            placeholder={CONFIRM_WORD}
+            style={{ padding: "10px 14px", borderRadius: 10, fontSize: 15, fontWeight: 700,
+              border: `2px solid ${typed === CONFIRM_WORD ? "var(--danger)" : "var(--line)"}`,
+              outline: "none", background: "var(--surface)", color: "var(--ink)" }}
+          />
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={() => { setStep(0); setTyped(""); }}
+              style={{ flex: 1, padding: "10px", borderRadius: 10, border: "1px solid var(--line)",
+                background: "var(--surface-2)", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>
+              ยกเลิก
+            </button>
+            <button onClick={doReset} disabled={typed !== CONFIRM_WORD}
+              style={{ flex: 2, padding: "10px", borderRadius: 10, border: "none",
+                background: typed === CONFIRM_WORD ? "var(--danger)" : "var(--line)",
+                color: typed === CONFIRM_WORD ? "white" : "var(--ink-4)",
+                fontWeight: 700, fontSize: 13, cursor: typed === CONFIRM_WORD ? "pointer" : "not-allowed",
+                transition: "background .2s" }}>
+              🗑️ ลบข้อมูลทั้งหมด
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

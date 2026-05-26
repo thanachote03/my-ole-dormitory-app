@@ -704,6 +704,56 @@ export function DataProvider({ children }) {
     try { await supabase.from("staff").delete().eq("id", id); } catch {}
   }, []);
 
+  // ─── Reset: clear all operational data, keep rooms skeleton ────────────
+  const resetAllData = useCallback(async () => {
+    // 1. Reset in-memory state immediately (UI feels instant)
+    setTenants([]);
+    setPayments([]);
+    setSlips([]);
+    setUtils([]);
+    setRepairs([]);
+    setBanks([]);
+    setStaff([]);
+    setNotifs([]);
+    setRooms(prev => prev.map(r => ({
+      ...r, status: "ว่าง",
+      lastElecMeter: null, lastWaterMeter: null,
+      lastMeterYear: null, lastMeterMonth: null,
+    })));
+    setOwnerState(DEFAULT_OWNER);
+    setBilling(SEED_BILLING);
+    setOwnerPin("admin1234");
+
+    // 2. Clear former-tenant histories from localStorage
+    try {
+      Object.keys(localStorage)
+        .filter(k => k.startsWith("baan_history_"))
+        .forEach(k => localStorage.removeItem(k));
+    } catch {}
+
+    // 3. Persist to Supabase (delete all rows; neq/gt used as "match everything" filter)
+    try {
+      await Promise.all([
+        supabase.from("tenants")  .delete().neq("id", "___x___"),
+        supabase.from("payments") .delete().gt("id", 0),
+        supabase.from("slips")    .delete().gt("id", 0),
+        supabase.from("utilities").delete().gt("id", 0),
+        supabase.from("repairs")  .delete().neq("id", "___x___"),
+        supabase.from("banks")    .delete().neq("id", "___x___"),
+        supabase.from("staff")    .delete().neq("id", "___x___"),
+        supabase.from("notifs")   .delete().neq("id", "___x___"),
+        supabase.from("config")   .delete().neq("key", "___x___"),
+        supabase.from("rooms").update({
+          status: "ว่าง",
+          lastElecMeter: null, lastWaterMeter: null,
+          lastMeterYear: null, lastMeterMonth: null,
+        }).neq("id", "___x___"),
+      ]);
+    } catch (e) {
+      console.warn("[resetAllData] Supabase error:", e?.message);
+    }
+  }, []);
+
   const value = useMemo(() => ({
     rooms: derivedRooms, tenants, payments, repairs, banks, slips, utils, notifs, billing, ownerPin, owner, staff,
     setRooms, setTenants, setPayments, setRepairs, setBanks, setSlips, setUtils, setNotifs, setBilling,
@@ -711,6 +761,7 @@ export function DataProvider({ children }) {
     updateRepair, addRepair, deleteRepair, updateTenant, updateRoom,
     moveTenant, deleteTenant, evictTenant, reactivateTenant, bulkSaveUtils,
     recordPayment, approveSlip, rejectSlip, deleteSlip, addSlip, refreshSlips, saveUtilReading, saveInitialReading, markNotifsRead,
+    resetAllData,
     // billing
     resolveBilling, setRoomBilling, computePaymentTotal,
     // banks
@@ -723,6 +774,7 @@ export function DataProvider({ children }) {
        updateRepair, addRepair, deleteRepair, updateTenant, updateRoom,
        moveTenant, deleteTenant, evictTenant, reactivateTenant, bulkSaveUtils,
        recordPayment, approveSlip, rejectSlip, deleteSlip, addSlip, refreshSlips, saveUtilReading, saveInitialReading, markNotifsRead,
+       resetAllData,
        resolveBilling, setRoomBilling, computePaymentTotal,
        addBank, updateBank, deleteBank, setPrimaryBank,
        addStaff, updateStaff, deleteStaff]);
