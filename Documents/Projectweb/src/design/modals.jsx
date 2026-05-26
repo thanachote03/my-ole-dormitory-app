@@ -1179,7 +1179,8 @@ function SettingsFooter({ onCancel, onSave, label }) {
 }
 
 export function SettingsModal({ onClose }) {
-  const { owner, updateOwner, banks, addBank, updateBank, deleteBank, setPrimaryBank,
+  const { owner, updateOwner, ownerUsername, updateOwnerUsername,
+    banks, addBank, updateBank, deleteBank, setPrimaryBank,
     staff, addStaff, updateStaff, deleteStaff, resetAllData } = useData();
   const [section, setSection] = useState("profile");
   const [name, setName] = useState(owner.name);
@@ -1203,6 +1204,7 @@ export function SettingsModal({ onClose }) {
   const [newPass, setNewPass] = useState("");
   const [newPass2, setNewPass2] = useState("");
   const [showPass, setShowPass] = useState(false);
+  const [newUsername, setNewUsername] = useState(ownerUsername || "admin");
   const [savedFlash, setSavedFlash] = useState(null);
 
   const saveProfile = () => {
@@ -1221,6 +1223,13 @@ export function SettingsModal({ onClose }) {
   const saveBilling = () => {
     updateOwner({ dueDay, billDay, elecRate, waterRate });
     setSavedFlash({ kind: "ok", msg: "บันทึกการตั้งค่าค่าน้ำ-ไฟเรียบร้อย" });
+  };
+  const saveUsername = async () => {
+    const trimmed = newUsername.trim();
+    if (!trimmed) { setSavedFlash({ kind: "error", msg: "ชื่อผู้ใช้ต้องไม่ว่าง" }); return; }
+    if (trimmed.length < 3) { setSavedFlash({ kind: "error", msg: "ชื่อผู้ใช้ต้องอย่างน้อย 3 ตัวอักษร" }); return; }
+    await updateOwnerUsername(trimmed);
+    setSavedFlash({ kind: "ok", msg: `เปลี่ยนชื่อผู้ใช้เป็น "${trimmed}" แล้ว` });
   };
   const savePassword = () => {
     if (newPass.length < 8) { setSavedFlash({ kind: "error", msg: "รหัสผ่านใหม่ต้องอย่างน้อย 8 ตัวอักษร" }); return; }
@@ -1426,6 +1435,52 @@ export function SettingsModal({ onClose }) {
 
           {section === "password" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+
+              {/* ── Username change card ── */}
+              <div style={{ background: "var(--surface-2)", borderRadius: 14, padding: 16, border: "1px solid var(--line)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+                  <div style={{ width: 32, height: 32, borderRadius: 9, background: "var(--brand-soft)",
+                    display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <IconUser size={16} stroke="var(--brand)"/>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)" }}>ชื่อผู้ใช้ (Username)</div>
+                    <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginTop: 1 }}>
+                      ปัจจุบัน: <span className="num" style={{ fontWeight: 700, color: "var(--brand-ink)" }}>{ownerUsername || "admin"}</span>
+                    </div>
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <input
+                    value={newUsername}
+                    onChange={e => setNewUsername(e.target.value)}
+                    placeholder="ชื่อผู้ใช้ใหม่ (อย่างน้อย 3 ตัวอักษร)"
+                    style={{ ...atInputStyle, flex: 1 }}
+                  />
+                  <button
+                    onClick={saveUsername}
+                    disabled={newUsername.trim() === (ownerUsername || "admin") || newUsername.trim().length < 3}
+                    style={{
+                      padding: "10px 16px", borderRadius: 10, border: "none", fontWeight: 700, fontSize: 13,
+                      cursor: (newUsername.trim() === (ownerUsername || "admin") || newUsername.trim().length < 3) ? "not-allowed" : "pointer",
+                      background: (newUsername.trim() === (ownerUsername || "admin") || newUsername.trim().length < 3) ? "var(--surface)" : "var(--brand)",
+                      color: (newUsername.trim() === (ownerUsername || "admin") || newUsername.trim().length < 3) ? "var(--ink-4)" : "white",
+                      border: (newUsername.trim() === (ownerUsername || "admin") || newUsername.trim().length < 3) ? "1px solid var(--line)" : "none",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    บันทึกชื่อผู้ใช้
+                  </button>
+                </div>
+              </div>
+
+              {/* ── Divider ── */}
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ flex: 1, height: 1, background: "var(--line)" }}/>
+                <span style={{ fontSize: 11, fontWeight: 700, color: "var(--ink-4)", textTransform: "uppercase", letterSpacing: 1 }}>เปลี่ยนรหัสผ่าน</span>
+                <div style={{ flex: 1, height: 1, background: "var(--line)" }}/>
+              </div>
+
               <div style={{ padding: "12px 14px", background: "var(--info-soft)", borderRadius: 12,
                 display: "flex", alignItems: "flex-start", gap: 10 }}>
                 <IconLock size={16} stroke="var(--info)"/>

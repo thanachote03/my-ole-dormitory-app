@@ -120,7 +120,7 @@ function RoleCard({ icon, title, sub, onClick, bg, fg = "var(--ink)", border, da
 
 // ─── Login Form (Username + Password) ───────────────────────────────────
 export function LoginFormScreen({ role = "owner", onBack, onSuccess }) {
-  const { tenants, ownerPin, staff } = useData();
+  const { tenants, ownerPin, ownerUsername, staff } = useData();
   const [u, setU] = useState("");
   const [p, setP] = useState("");
   const [show, setShow] = useState(false);
@@ -153,8 +153,9 @@ export function LoginFormScreen({ role = "owner", onBack, onSuccess }) {
       if (s && p === s.password) {
         onSuccess?.({ role: "owner", username: s.username, staffRole: s.role || "admin", staffName: s.name, remember }); return;
       }
-      // Legacy fallback: hardcoded admin + ownerPin (works even if staff table is empty)
-      if (u === "admin" && p === (ownerPin || "admin1234")) {
+      // Legacy fallback: ownerUsername + ownerPin (stored in config, defaults to admin/admin1234)
+      const adminUser = ownerUsername || "admin";
+      if (u.toLowerCase() === adminUser.toLowerCase() && p === (ownerPin || "admin1234")) {
         onSuccess?.({ role: "owner", username: u, staffRole: "admin", remember }); return;
       }
     } else {

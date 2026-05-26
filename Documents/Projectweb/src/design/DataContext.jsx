@@ -58,7 +58,8 @@ export function DataProvider({ children }) {
   const [utils, setUtils] = useState([]);
   const [notifs, setNotifs] = useState([]);
   const [billing, setBilling] = useState({ defaultElecFlat: 0, defaultWaterFlat: 0, monthly: {} });
-  const [ownerPin, setOwnerPin] = useState("admin1234");
+  const [ownerPin,      setOwnerPin]      = useState("admin1234");
+  const [ownerUsername, setOwnerUsername] = useState("admin");
   const [owner, setOwnerState] = useState(DEFAULT_OWNER);
   const [staff, setStaff] = useState([]);
   const [loaded, setLoaded] = useState(false);
@@ -96,6 +97,8 @@ export function DataProvider({ children }) {
         if (cfg?.data) {
           const pinRow = cfg.data.find(c => c.key === "owner_pin");
           if (pinRow?.value) setOwnerPin(pinRow.value);
+          const usernameRow = cfg.data.find(c => c.key === "owner_username");
+          if (usernameRow?.value) setOwnerUsername(usernameRow.value);
           const ownerRow = cfg.data.find(c => c.key === "owner_profile");
           if (ownerRow?.value) {
             try { setOwnerState(prev => ({ ...prev, ...JSON.parse(ownerRow.value) })); } catch {}
@@ -133,10 +136,21 @@ export function DataProvider({ children }) {
       return next;
     });
     if (patch.password) {
+      const currentUsername = ownerUsername || "admin";
       setOwnerPin(patch.password);
-      try { await supabase.from("config").upsert({ key: "owner_pin", value: patch.password }); } catch {}
+      // Sync staff table — update password on the owner's staff row so the old password stops working
+      setStaff(prev => prev.map(s =>
+        s.username.toLowerCase() === currentUsername.toLowerCase()
+          ? { ...s, password: patch.password }
+          : s
+      ));
+      try {
+        await supabase.from("config").upsert({ key: "owner_pin", value: patch.password });
+        await supabase.from("staff").update({ password: patch.password })
+          .ilike("username", currentUsername);
+      } catch {}
     }
-  }, []);
+  }, [ownerUsername]);
 
   const moveTenant = useCallback((tenantId, toRoom) => {
     setTenants(prev => {
@@ -390,6 +404,22 @@ export function DataProvider({ children }) {
     setOwnerPin(pin);
     try { await supabase.from("config").upsert({ key: "owner_pin", value: pin }); } catch {}
   }, []);
+
+  const updateOwnerUsername = useCallback(async (newUsername) => {
+    const oldUsername = ownerUsername || "admin";
+    setOwnerUsername(newUsername);
+    // Sync staff table — rename the owner's staff row so the old username stops working
+    setStaff(prev => prev.map(s =>
+      s.username.toLowerCase() === oldUsername.toLowerCase()
+        ? { ...s, username: newUsername }
+        : s
+    ));
+    try {
+      await supabase.from("config").upsert({ key: "owner_username", value: newUsername });
+      await supabase.from("staff").update({ username: newUsername })
+        .ilike("username", oldUsername);
+    } catch {}
+  }, [ownerUsername]);
 
   const updateRepair = useCallback(async (id, patch) => {
     setRepairs(prev => prev.map(r => r.id === id ? { ...r, ...patch } : r));
@@ -730,6 +760,7 @@ export function DataProvider({ children }) {
     setOwnerState(DEFAULT_OWNER);
     setBilling({ defaultElecFlat: 0, defaultWaterFlat: 0, monthly: {} });
     setOwnerPin("admin1234");
+    setOwnerUsername("admin");
 
     // 2. Clear all localStorage (former-tenant histories + any cached keys)
     try {
@@ -760,7 +791,7 @@ export function DataProvider({ children }) {
   const value = useMemo(() => ({
     rooms: derivedRooms, tenants, payments, repairs, banks, slips, utils, notifs, billing, ownerPin, owner, staff,
     setRooms, setTenants, setPayments, setRepairs, setBanks, setSlips, setUtils, setNotifs, setBilling,
-    addTenant, addRoom, deleteRoom, updateOwnerPin, updateOwner,
+    addTenant, addRoom, deleteRoom, updateOwnerPin, updateOwnerUsername, updateOwner,
     updateRepair, addRepair, deleteRepair, updateTenant, updateRoom,
     moveTenant, deleteTenant, evictTenant, reactivateTenant, bulkSaveUtils,
     recordPayment, approveSlip, rejectSlip, deleteSlip, addSlip, refreshSlips, saveUtilReading, saveInitialReading, markNotifsRead,
@@ -772,8 +803,9 @@ export function DataProvider({ children }) {
     // staff
     addStaff, updateStaff, deleteStaff,
     loaded, curY: CUR_Y, curM: CUR_M, utilRate: UTIL_RATE,
-  }), [derivedRooms, rooms, tenants, payments, repairs, banks, slips, utils, notifs, billing, ownerPin, owner, staff, loaded,
-       addTenant, addRoom, deleteRoom, updateOwnerPin, updateOwner,
+    ownerUsername,
+  }), [derivedRooms, rooms, tenants, payments, repairs, banks, slips, utils, notifs, billing, ownerPin, ownerUsername, owner, staff, loaded,
+       addTenant, addRoom, deleteRoom, updateOwnerPin, updateOwnerUsername, updateOwner,
        updateRepair, addRepair, deleteRepair, updateTenant, updateRoom,
        moveTenant, deleteTenant, evictTenant, reactivateTenant, bulkSaveUtils,
        recordPayment, approveSlip, rejectSlip, deleteSlip, addSlip, refreshSlips, saveUtilReading, saveInitialReading, markNotifsRead,
