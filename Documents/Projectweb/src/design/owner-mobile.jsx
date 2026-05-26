@@ -490,11 +490,26 @@ function MTenantDetail({ tenant, onBack, onEdit }) {
           display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
           <IconEdit size={14} stroke="white"/> แก้ไข
         </button>
-        <button style={{ background: "var(--brand)", color: "white", border: "none", borderRadius: 11,
-          padding: "11px 0", fontWeight: 700, fontSize: 13, cursor: "pointer",
-          display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-          <IconCard size={14} stroke="white"/> บันทึกชำระ
-        </button>
+        {(() => {
+          const pending = pays.find(p => p.status === "รอชำระ");
+          return (
+            <button
+              onClick={() => pending && setConfirmPay(pending)}
+              disabled={!pending}
+              style={{
+                background: pending ? "var(--brand)" : "var(--line)",
+                color: pending ? "white" : "var(--ink-3)",
+                border: "none", borderRadius: 11,
+                padding: "11px 0", fontWeight: 700, fontSize: 13,
+                cursor: pending ? "pointer" : "default",
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                opacity: pending ? 1 : 0.55,
+              }}>
+              <IconCard size={14} stroke={pending ? "white" : "var(--ink-3)"}/>
+              บันทึกชำระ
+            </button>
+          );
+        })()}
       </div>
 
       {/* Evict / Re-rent button — only for active tenants with a room */}
