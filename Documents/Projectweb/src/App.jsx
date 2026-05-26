@@ -1,10 +1,13 @@
 // Dormitory · Soft Pastel Redesign — entry shell
-import { useEffect, useState } from "react";
+import { useEffect, useState, lazy, Suspense } from "react";
 import { DataProvider, useData } from "./design/DataContext";
 import { LoginScreen, LoginFormScreen, TenantApp } from "./design/mobile";
-import { OwnerDesktop } from "./design/owner";
-import { OwnerMobile } from "./design/owner-mobile";
 import { supabase } from "./supabaseClient";
+
+// Heavy owner views are lazy-loaded — only downloaded AFTER the user logs in as owner.
+// Saves ~400 KB on the initial page load for tenants and unauthenticated visitors.
+const OwnerDesktop = lazy(() => import("./design/owner").then(m => ({ default: m.OwnerDesktop })));
+const OwnerMobile  = lazy(() => import("./design/owner-mobile").then(m => ({ default: m.OwnerMobile })));
 
 export default function App() {
   return (
@@ -115,9 +118,13 @@ function Shell() {
   }
 
   if (auth?.role === "owner") {
-    return mobile
-      ? <OwnerMobile staffRole={auth.staffRole} staffName={auth.staffName} onLogout={handleLogout}/>
-      : <OwnerDesktop staffRole={auth.staffRole} staffName={auth.staffName} onLogout={handleLogout}/>;
+    return (
+      <Suspense fallback={<DataLoadingScreen />}>
+        {mobile
+          ? <OwnerMobile staffRole={auth.staffRole} staffName={auth.staffName} onLogout={handleLogout}/>
+          : <OwnerDesktop staffRole={auth.staffRole} staffName={auth.staffName} onLogout={handleLogout}/>}
+      </Suspense>
+    );
   }
   if (auth?.role === "tenant") {
     return (

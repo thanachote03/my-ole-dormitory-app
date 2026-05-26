@@ -64,42 +64,37 @@ export function DataProvider({ children }) {
   const [staff, setStaff] = useState([]);
   const [loaded, setLoaded] = useState(false);
 
-  // Hydrate from Supabase. On success, server data replaces the empty initial state.
-  // On failure (Supabase unreachable), SEED_* demo data is used as an offline fallback.
+  // ── Supabase hydration — two-phase loading for faster first render ────────
+  //
+  // Phase 1 (critical): rooms, tenants, config, staff
+  //   → sets loaded=true so the UI can render immediately after ~4 queries
+  //
+  // Phase 2 (deferred): payments, repairs, utilities, slips, banks, notifs
+  //   → loads in background; tabs that need this data render when ready
+  //
+  // If Supabase is completely unreachable, SEED_* demo data is used as fallback.
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const [r, t, p, rep, util, slip, bank, notif, cfg, st] = await Promise.all([
+        // ── Phase 1: critical tables ─────────────────────────────────────
+        const [r, t, cfg, st] = await Promise.all([
           supabase.from("rooms").select("*").order("id"),
           supabase.from("tenants").select("*").order("name"),
-          supabase.from("payments").select("*"),
-          supabase.from("repairs").select("*").order("created_at", { ascending: false }),
-          supabase.from("utilities").select("*"),
-          supabase.from("slips").select("*").order("created_at", { ascending: false }),
-          supabase.from("banks").select("*"),
-          supabase.from("notifs").select("*").order("created_at", { ascending: false }),
           supabase.from("config").select("*"),
           supabase.from("staff").select("*").order("username"),
         ]);
         if (cancelled) return;
-        // Use server data when query succeeded (no error). Only keep seed if the table
-        // call itself errored — that way reality stays in sync with DB.
-        if (!r?.error    && r?.data)    setRooms(r.data);
-        if (!t?.error    && t?.data)    setTenants(t.data.map(adaptTenant));
-        if (!p?.error    && p?.data)    setPayments(p.data);
-        if (!rep?.error  && rep?.data)  setRepairs(rep.data);
-        if (!util?.error && util?.data) setUtils(util.data);
-        if (!slip?.error && slip?.data) setSlips(slip.data.map(adaptSlip));
-        if (!bank?.error && bank?.data) setBanks(bank.data);
-        if (!notif?.error && notif?.data) setNotifs(notif.data);
-        if (!st?.error && st?.data) setStaff(st.data);
+
+        if (!r?.error   && r?.data)   setRooms(r.data);
+        if (!t?.error   && t?.data)   setTenants(t.data.map(adaptTenant));
+        if (!st?.error  && st?.data)  setStaff(st.data);
         if (cfg?.data) {
-          const pinRow = cfg.data.find(c => c.key === "owner_pin");
+          const pinRow     = cfg.data.find(c => c.key === "owner_pin");
           if (pinRow?.value) setOwnerPin(pinRow.value);
           const usernameRow = cfg.data.find(c => c.key === "owner_username");
           if (usernameRow?.value) setOwnerUsername(usernameRow.value);
-          const ownerRow = cfg.data.find(c => c.key === "owner_profile");
+          const ownerRow   = cfg.data.find(c => c.key === "owner_profile");
           if (ownerRow?.value) {
             try { setOwnerState(prev => ({ ...prev, ...JSON.parse(ownerRow.value) })); } catch {}
           }
@@ -108,6 +103,31 @@ export function DataProvider({ children }) {
             try { setBilling(prev => ({ ...prev, ...JSON.parse(billingRow.value) })); } catch {}
           }
         }
+
+        // ← UI can now render; Phase 2 runs in background
+        if (!cancelled) setLoaded(true);
+
+        // ── Phase 2: deferred tables (non-blocking) ───────────────────────
+        try {
+          const [p, rep, util, slip, bank, notif] = await Promise.all([
+            supabase.from("payments").select("*"),
+            supabase.from("repairs").select("*").order("created_at", { ascending: false }),
+            supabase.from("utilities").select("*"),
+            supabase.from("slips").select("*").order("created_at", { ascending: false }),
+            supabase.from("banks").select("*"),
+            supabase.from("notifs").select("*").order("created_at", { ascending: false }),
+          ]);
+          if (cancelled) return;
+          if (!p?.error    && p?.data)    setPayments(p.data);
+          if (!rep?.error  && rep?.data)  setRepairs(rep.data);
+          if (!util?.error && util?.data) setUtils(util.data);
+          if (!slip?.error && slip?.data) setSlips(slip.data.map(adaptSlip));
+          if (!bank?.error && bank?.data) setBanks(bank.data);
+          if (!notif?.error && notif?.data) setNotifs(notif.data);
+        } catch (e2) {
+          console.warn("[DataProvider] Phase 2 load failed:", e2?.message || e2);
+        }
+
       } catch (e) {
         // Supabase not reachable — load SEED demo data as offline fallback
         console.warn("[DataProvider] Supabase load failed, using seed:", e?.message || e);
@@ -121,9 +141,8 @@ export function DataProvider({ children }) {
           setUtils(SEED_UTILS);
           setNotifs(SEED_NOTIFS);
           setBilling(SEED_BILLING);
+          setLoaded(true);
         }
-      } finally {
-        if (!cancelled) setLoaded(true);
       }
     })();
     return () => { cancelled = true; };
