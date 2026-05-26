@@ -433,19 +433,19 @@ export function DataProvider({ children }) {
     try { await supabase.from("payments").upsert({ room_id, year, month, amount, status: "ชำระแล้ว", paid_at }); } catch {}
   }, []);
 
-  const approveSlip = useCallback((id) => {
-    setSlips(prev => {
-      const s = prev.find(x => x.id === id);
-      if (s) recordPayment({ room_id: s.room_id, year: s.year, month: s.month, amount: s.amount });
-      return prev.map(x => x.id === id ? { ...x, status: "approved" } : x);
-    });
+  const approveSlip = useCallback(async (id) => {
+    // Read slip data from current state before updating — do NOT call async funcs inside setState updater
+    const s = slips.find(x => x.id === id);
+    setSlips(prev => prev.map(x => x.id === id ? { ...x, status: "approved" } : x));
     setNotifs(prev => prev.filter(n => !(n.type === "slip" && n.link === "slips") || n.id.endsWith(id)));
-    try { supabase.from("slips").update({ status: "approved" }).eq("id", id); } catch {}
-  }, [recordPayment]);
+    // Persist both the slip status AND the payment to Supabase (both must be awaited)
+    if (s) await recordPayment({ room_id: s.room_id, year: s.year, month: s.month, amount: s.amount });
+    try { await supabase.from("slips").update({ status: "approved" }).eq("id", id); } catch {}
+  }, [slips, recordPayment]);
 
-  const rejectSlip = useCallback((id) => {
+  const rejectSlip = useCallback(async (id) => {
     setSlips(prev => prev.map(x => x.id === id ? { ...x, status: "rejected" } : x));
-    try { supabase.from("slips").update({ status: "rejected" }).eq("id", id); } catch {}
+    try { await supabase.from("slips").update({ status: "rejected" }).eq("id", id); } catch {}
   }, []);
 
   const deleteSlip = useCallback(async (id) => {
