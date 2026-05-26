@@ -146,16 +146,16 @@ export function LoginFormScreen({ role = "owner", onBack, onSuccess }) {
       // Try Supabase Auth: email convention is `<username>@dorm.local`
       const authUser = await tryAuth(`${u.toLowerCase()}@dorm.local`, p);
       if (authUser?.user_metadata?.role === "owner") {
-        onSuccess?.({ role: "owner", username: u, authId: authUser.id, staffRole: authUser.user_metadata.staffRole || "admin" }); return;
+        onSuccess?.({ role: "owner", username: u, authId: authUser.id, staffRole: authUser.user_metadata.staffRole || "admin", remember }); return;
       }
       // Staff table check: any username in staff with matching password gets in with their role
       const s = staff.find(x => x.username && x.username.toLowerCase() === u.toLowerCase());
       if (s && p === s.password) {
-        onSuccess?.({ role: "owner", username: s.username, staffRole: s.role || "admin", staffName: s.name }); return;
+        onSuccess?.({ role: "owner", username: s.username, staffRole: s.role || "admin", staffName: s.name, remember }); return;
       }
       // Legacy fallback: hardcoded admin + ownerPin (works even if staff table is empty)
       if (u === "admin" && p === (ownerPin || "admin1234")) {
-        onSuccess?.({ role: "owner", username: u, staffRole: "admin" }); return;
+        onSuccess?.({ role: "owner", username: u, staffRole: "admin", remember }); return;
       }
     } else {
       // Find local tenant by username/id/room for fallback path + Supabase Auth attempt
@@ -170,12 +170,12 @@ export function LoginFormScreen({ role = "owner", onBack, onSuccess }) {
       const lookup = (t?.username || u).toLowerCase();
       const authUser = await tryAuth(`${lookup}@dorm.local`, p);
       if (authUser?.user_metadata?.tenant_id) {
-        onSuccess?.({ role: "tenant", username: u, tenantId: authUser.user_metadata.tenant_id, authId: authUser.id });
+        onSuccess?.({ role: "tenant", username: u, tenantId: authUser.user_metadata.tenant_id, authId: authUser.id, remember });
         return;
       }
       // Fallback: local password check
       const expected = t?.password || "tenant";
-      if (t && p === expected) { onSuccess?.({ role: "tenant", username: u, tenantId: t.id }); return; }
+      if (t && p === expected) { onSuccess?.({ role: "tenant", username: u, tenantId: t.id, remember }); return; }
     }
     setErr(true); setTimeout(() => setErr(false), 700);
   };

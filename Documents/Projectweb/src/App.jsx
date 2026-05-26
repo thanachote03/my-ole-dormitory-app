@@ -26,15 +26,40 @@ function useIsMobile(breakpoint = 768) {
   return mobile;
 }
 
+const AUTH_KEY = "bee_auth";
+
+function loadStoredAuth() {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(AUTH_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
 function Shell() {
-  const [auth, setAuth] = useState(null);
+  const [auth, setAuthState] = useState(loadStoredAuth);
   const [pickRole, setPickRole] = useState(null);
   const mobile = useIsMobile();
+
+  // Wrap setAuth so success writes to localStorage (when "remember" is true,
+  // which is the default in the login form). Refresh then re-hydrates the
+  // session instead of dumping the user back at the welcome screen.
+  const setAuth = (next) => {
+    setAuthState(next);
+    try {
+      if (next && next.remember !== false) {
+        window.localStorage.setItem(AUTH_KEY, JSON.stringify(next));
+      } else {
+        window.localStorage.removeItem(AUTH_KEY);
+      }
+    } catch {}
+  };
 
   // Sign out from Supabase Auth when user logs out (no-op if not signed in)
   const handleLogout = () => {
     try { supabase.auth.signOut(); } catch {}
-    setAuth(null);
+    try { window.localStorage.removeItem(AUTH_KEY); } catch {}
+    setAuthState(null);
     setPickRole(null);
   };
 
