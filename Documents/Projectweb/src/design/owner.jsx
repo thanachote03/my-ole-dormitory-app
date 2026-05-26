@@ -2630,14 +2630,16 @@ function UtilityPage() {
                     const pr = roomUtils
                       .filter(x => !x.isInitial && (x.year < u.year || (x.year === u.year && x.month < u.month)))
                       .sort((a, b) => b.year !== a.year ? b.year - a.year : b.month - a.month)[0];
-                    // Same-month initial (tenant moved in this exact month)
+                    // Same-month initial (tenant moved in this exact month, not yet replaced by regular reading)
                     const initRec  = roomUtils.find(x => x.isInitial && x.year === u.year && x.month === u.month);
                     // Most-recent initial from ANY previous month (handles: initial in Apr, regular in May → no pr)
                     const initPrev = roomUtils
                       .filter(x => x.isInitial && (x.year < u.year || (x.year === u.year && x.month < u.month)))
                       .sort((a, b) => b.year !== a.year ? b.year - a.year : b.month - a.month)[0];
-                    const ePrev = pr?.elec_cur ?? initRec?.elec_cur ?? initPrev?.elec_cur ?? 0;
-                    const wPrev = pr?.water_cur ?? initRec?.water_cur ?? initPrev?.water_cur ?? 0;
+                    // u.elec_prev is stored at save-time and is always correct (even when the initial record
+                    // was overwritten by a same-month regular reading). Use it first; fall back to lookups.
+                    const ePrev = u.elec_prev ?? pr?.elec_cur ?? initRec?.elec_cur ?? initPrev?.elec_cur ?? 0;
+                    const wPrev = u.water_prev ?? pr?.water_cur ?? initRec?.water_cur ?? initPrev?.water_cur ?? 0;
                     const eUse = Math.max(0, u.elec_cur - ePrev);
                     const wUse = Math.max(0, u.water_cur - wPrev);
 

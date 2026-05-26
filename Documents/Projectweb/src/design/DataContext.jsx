@@ -547,9 +547,11 @@ export function DataProvider({ children }) {
         room_id, year, month,
         elec_prev, elec_cur, elec_use, elec_amount: elec_use * UTIL_RATE.electric,
         water_prev, water_cur, water_use, water_amount: water_use * UTIL_RATE.water,
+        isInitial: false, // explicit false so Supabase upsert overwrites any existing isInitial=true
         read_at: new Date().toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" }),
       };
       savedRow = row;
+      // Match any existing record for this room+month (initial or regular) and replace it
       const idx = prev.findIndex(u => u.room_id === room_id && u.year === year && u.month === month);
       if (idx >= 0) { const copy = [...prev]; copy[idx] = { ...row, id: prev[idx].id }; return copy; }
       return [...prev, { ...row, id: Date.now() }];

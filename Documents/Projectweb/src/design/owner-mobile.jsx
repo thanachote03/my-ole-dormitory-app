@@ -1555,8 +1555,10 @@ function MUtilHistoryPage({ onBack }) {
             const initPrev = roomUtils
               .filter(x => x.isInitial && (x.year < u.year || (x.year === u.year && x.month < u.month)))
               .sort((a, b) => b.year !== a.year ? b.year - a.year : b.month - a.month)[0];
-            const ePrev = prRec?.elec_cur  ?? initRec?.elec_cur  ?? initPrev?.elec_cur  ?? 0;
-            const wPrev = prRec?.water_cur ?? initRec?.water_cur ?? initPrev?.water_cur ?? 0;
+            // u.elec_prev is stored at save-time and is always correct (even when same-month initial was
+            // overwritten by this regular reading). Use it first; fall back to lookups.
+            const ePrev = u.elec_prev ?? prRec?.elec_cur  ?? initRec?.elec_cur  ?? initPrev?.elec_cur  ?? 0;
+            const wPrev = u.water_prev ?? prRec?.water_cur ?? initRec?.water_cur ?? initPrev?.water_cur ?? 0;
             const eUse  = Math.max(0, u.elec_cur - ePrev);
             const wUse  = Math.max(0, u.water_cur - wPrev);
 
