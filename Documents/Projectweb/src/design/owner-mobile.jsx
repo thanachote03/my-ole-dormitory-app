@@ -83,6 +83,24 @@ export function OwnerMobile({ initialTab = "overview", staffRole = "admin", staf
     );
   }
 
+  if (subPage === "extenants") {
+    return (
+      <div style={{ width: "100%", minHeight: "100vh", background: "var(--bg)", display: "flex", flexDirection: "column" }}>
+        <MobileTopBar owner={owner} onOpenSettings={() => setSettingsOpen(true)} onLogout={onLogout}/>
+        <div style={{ flex: 1, overflow: "auto" }}>
+          <MExTenantsPage
+            onBack={() => setSubPage(null)}
+            onEdit={(id) => setEditId(id)}
+          />
+        </div>
+        {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)}/>}
+        {editingTenant && <EditTenantModal tenant={editingTenant}
+          onClose={() => setEditId(null)}
+          onSave={(patch) => { updateTenant(editingTenant.id, patch); setEditId(null); }}/>}
+      </div>
+    );
+  }
+
   return (
     <div style={{ width: "100%", minHeight: "100vh", background: "var(--bg)", display: "flex",
       flexDirection: "column", position: "relative", paddingBottom: 76 }}>
@@ -96,8 +114,10 @@ export function OwnerMobile({ initialTab = "overview", staffRole = "admin", staf
           onPickMonth={(k) => setMonthKey(k)} onBulk={() => setBulkOpen(true)}
           onSlips={() => setSubPage("slips")}/>}
         {tab === "tenants"  && (detailTenant
-          ? <MTenantDetail tenant={detailTenant} onBack={() => setTenantSel(null)} onEdit={() => setEditId(detailTenant.id)}/>
-          : <MTenantsList onPick={(id) => setTenantSel(id)} onAdd={() => setAddOpen(true)}/>)}
+          ? <MTenantDetail tenant={detailTenant} onBack={() => setTenantSel(null)} onEdit={() => setEditId(detailTenant.id)}
+              onEvicted={() => { setTenantSel(null); setSubPage("extenants"); }}/>
+          : <MTenantsList onPick={(id) => setTenantSel(id)} onAdd={() => setAddOpen(true)}
+              onViewExTenants={() => setSubPage("extenants")}/>)}
         {tab === "rooms"    && (roomId
           ? <MRoomDetail roomId={roomId} onBack={() => setRoomId(null)}
               onMove={(tid, to) => { moveTenant(tid, to); setRoomId(to); }}
@@ -332,10 +352,15 @@ function QuickBtn({ icon: Ic, label, onClick }) {
   );
 }
 
-function MTenantsList({ onPick, onAdd }) {
+function MTenantsList({ onPick, onAdd, onViewExTenants }) {
   const { tenants, rooms, payments, curY, curM } = useData();
   const [q, setQ] = useState("");
-  const list = tenants.filter(t => t.name.includes(q) || (t.room || "").toLowerCase().includes(q.toLowerCase()));
+  // Only show active tenants (has a room and not evicted)
+  const activeTenants = tenants.filter(t => t.room && !t.evicted);
+  const exCount = tenants.filter(t => t.evicted).length;
+  const list = activeTenants.filter(t =>
+    t.name.includes(q) || (t.room || "").toLowerCase().includes(q.toLowerCase())
+  );
   return (
     <div>
       <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
@@ -423,11 +448,33 @@ function MTenantsList({ onPick, onAdd }) {
           );
         })}
       </div>
+
+      {/* Ex-tenants link */}
+      {exCount > 0 && (
+        <button onClick={onViewExTenants} style={{
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          width: "100%", marginTop: 16, padding: "12px 14px",
+          background: "oklch(0.97 0.02 25)", border: "1px solid oklch(0.88 0.05 25)",
+          borderRadius: 12, cursor: "pointer", textAlign: "left",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ width: 34, height: 34, borderRadius: 9,
+              background: "oklch(0.55 0.16 25)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <IconUsers size={16} stroke="white"/>
+            </div>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "oklch(0.35 0.14 25)" }}>ผู้เช่าเก่า</div>
+              <div style={{ fontSize: 11, color: "oklch(0.55 0.10 25)", marginTop: 1 }}>{exCount} คน · เลิกเช่าแล้ว</div>
+            </div>
+          </div>
+          <IconChevR size={15} stroke="oklch(0.55 0.10 25)"/>
+        </button>
+      )}
     </div>
   );
 }
 
-function MTenantDetail({ tenant, onBack, onEdit }) {
+function MTenantDetail({ tenant, onBack, onEdit, onEvicted }) {
   const { rooms, payments, recordPayment, evictTenant, reactivateTenant, computePaymentTotal, curY, curM } = useData();
   // Compute full bill (rent + electricity + water) per payment row
   const payTotal = (p) => {
@@ -565,6 +612,7 @@ function MTenantDetail({ tenant, onBack, onEdit }) {
               <button onClick={() => {
                 evictTenant(tenant.id, evictDay, evictMonth, evictYear);
                 setConfirmEvict(false);
+                if (onEvicted) onEvicted(tenant.id);
               }} style={{
                 padding: "9px 0", borderRadius: 10, border: "none",
                 background: "var(--danger)", color: "white", fontWeight: 700, fontSize: 12.5, cursor: "pointer",
@@ -961,6 +1009,227 @@ function MMorePage({ onBulk, setTab, onPickMonth, onOpenSettings, onLogout, onSl
       }}>
         <IconLogout size={16} stroke="var(--danger)"/> ออกจากระบบ
       </button>
+    </div>
+  );
+}
+
+// ─── Ex-Tenants (Former Tenants) Page ─────────────────────────────────────
+function MExTenantsPage({ onBack, onEdit }) {
+  const { tenants, rooms, payments, reactivateTenant, deleteTenant, curY, curM } = useData();
+  const [q, setQ]       = useState("");
+  const [selId, setSelId] = useState(null);
+  const [rerentRoom, setRerentRoom] = useState("");
+  const [rerentY, setRerentY]   = useState(curY);
+  const [rerentM, setRerentM]   = useState(curM);
+  const [confirmDel, setConfirmDel] = useState(false);
+
+  const exTenants = tenants
+    .filter(t => t.evicted)
+    .filter(t => !q || t.name.includes(q) || (t.prevRoom || "").includes(q))
+    .sort((a, b) => {
+      const ay = a.evictedY ?? 0, by = b.evictedY ?? 0;
+      const am = a.evictedM ?? 0, bm = b.evictedM ?? 0;
+      return by !== ay ? by - ay : bm - am;
+    });
+
+  const sel = selId ? tenants.find(t => t.id === selId) : null;
+  const vacantRooms = rooms.filter(r => r.status === "ว่าง");
+  const MONTHS_SHORT = ["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."];
+
+  /* ── Detail view for a selected ex-tenant ── */
+  if (sel) {
+    const pays = payments
+      .filter(p => p.room_id === sel.prevRoom)
+      .sort((a, b) => b.year !== a.year ? b.year - a.year : b.month - a.month)
+      .slice(0, 12);
+
+    const selStyle = { padding: "6px 8px", borderRadius: 8, border: "1px solid var(--line)",
+      background: "white", fontSize: 12, cursor: "pointer", color: "var(--ink)", fontFamily: "var(--font-num)" };
+
+    return (
+      <div style={{ padding: "12px 16px 100px" }}>
+        <button onClick={() => { setSelId(null); setConfirmDel(false); setRerentRoom(""); }} style={{
+          background: "transparent", border: "none", color: "var(--ink-2)",
+          cursor: "pointer", fontSize: 12.5, fontWeight: 700, padding: 0, marginBottom: 14,
+          display: "flex", alignItems: "center", gap: 4 }}>
+          <IconArrowLeft size={14} stroke="var(--ink-2)"/> กลับผู้เช่าเก่า
+        </button>
+
+        {/* Profile card */}
+        <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 14,
+          padding: 16, display: "flex", alignItems: "center", gap: 14, marginBottom: 12 }}>
+          <div style={{ width: 48, height: 48, borderRadius: 13, background: "oklch(0.55 0.16 25)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 18, fontWeight: 700, color: "white" }}>
+            {sel.name?.[0] || "?"}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 15, fontWeight: 700 }}>{sel.name}</div>
+            <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginTop: 2 }}>
+              ห้องเดิม {sel.prevRoom || "—"} · {sel.phone || "ไม่มีเบอร์"}
+            </div>
+            {sel.evictedY != null && (
+              <div style={{ fontSize: 11.5, color: "oklch(0.48 0.16 25)", marginTop: 2, fontWeight: 600 }}>
+                เลิกเช่า {dld(sel.evictedDay || 1, sel.evictedY, sel.evictedM)}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Re-rent section */}
+        <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 14,
+          padding: 14, marginBottom: 12 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>ย้ายกลับเข้าหอ</div>
+          {vacantRooms.length === 0 ? (
+            <div style={{ fontSize: 12.5, color: "var(--ink-3)", textAlign: "center", padding: "10px 0" }}>
+              ไม่มีห้องว่างในขณะนี้
+            </div>
+          ) : (
+            <>
+              <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginBottom: 6, fontWeight: 600 }}>เลือกห้อง</div>
+              <select value={rerentRoom} onChange={e => setRerentRoom(e.target.value)} style={{ ...selStyle, width: "100%", marginBottom: 10 }}>
+                <option value="">— เลือกห้อง —</option>
+                {vacantRooms.map(r => <option key={r.id} value={r.id}>{r.id} · {baht(r.price || 0)}/เดือน</option>)}
+              </select>
+              <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginBottom: 6, fontWeight: 600 }}>วันเข้าพัก</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 8, marginBottom: 12 }}>
+                <select value={rerentM} onChange={e => setRerentM(+e.target.value)} style={selStyle}>
+                  {MONTHS_SHORT.map((mn, i) => <option key={i} value={i}>{mn}</option>)}
+                </select>
+                <select value={rerentY} onChange={e => setRerentY(+e.target.value)} style={selStyle}>
+                  {[curY - 1, curY, curY + 1].map(y => <option key={y} value={y}>{y + 543}</option>)}
+                </select>
+              </div>
+              <button
+                disabled={!rerentRoom}
+                onClick={() => {
+                  if (!rerentRoom) return;
+                  reactivateTenant(sel.id, rerentRoom, rerentY, rerentM);
+                  setSelId(null);
+                  setRerentRoom("");
+                }}
+                style={{
+                  width: "100%", padding: "12px 0", borderRadius: 12, border: "none",
+                  background: rerentRoom ? "var(--ok)" : "var(--line)",
+                  color: rerentRoom ? "white" : "var(--ink-3)",
+                  fontWeight: 700, fontSize: 13, cursor: rerentRoom ? "pointer" : "default",
+                }}>
+                ✓ ย้ายกลับเข้าหอ
+              </button>
+            </>
+          )}
+        </div>
+
+        {/* Payment history */}
+        {pays.length > 0 && (
+          <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 14, padding: 14, marginBottom: 12 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>ประวัติการชำระ (ห้อง {sel.prevRoom})</div>
+            {pays.map((p, i) => (
+              <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
+                padding: "9px 0", borderTop: i === 0 ? "none" : "1px solid var(--line)" }}>
+                <div>
+                  <div style={{ fontSize: 12.5, fontWeight: 600 }}>{dl(p.year, p.month)}</div>
+                  <div className="num" style={{ fontSize: 11.5, color: "var(--ink-3)", marginTop: 1 }}>{baht(p.amount)}</div>
+                </div>
+                <span style={{
+                  background: p.status === "ชำระแล้ว" ? "var(--ok-soft)" : "var(--warn-soft)",
+                  color: p.status === "ชำระแล้ว" ? "var(--ok)" : "var(--warn)",
+                  fontSize: 10.5, fontWeight: 700, padding: "3px 9px", borderRadius: 100,
+                }}>{p.status === "ชำระแล้ว" ? "✓ ชำระแล้ว" : "⏳ รอชำระ"}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Delete */}
+        {!confirmDel ? (
+          <button onClick={() => setConfirmDel(true)} style={{
+            width: "100%", padding: "12px 0", borderRadius: 12,
+            border: "1px solid var(--line)", background: "transparent",
+            color: "var(--ink-3)", fontWeight: 600, fontSize: 13, cursor: "pointer",
+          }}>× ลบข้อมูลผู้เช่านี้</button>
+        ) : (
+          <div style={{ padding: "14px 16px", borderRadius: 14, border: "1.5px solid var(--danger-soft)", background: "var(--danger-soft)" }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "var(--danger)", marginBottom: 6 }}>ยืนยันการลบ?</div>
+            <div style={{ fontSize: 12, color: "var(--ink-2)", marginBottom: 12, lineHeight: 1.5 }}>
+              ข้อมูลผู้เช่าจะถูกลบถาวร ไม่สามารถกู้คืนได้
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <button onClick={() => setConfirmDel(false)} style={{
+                padding: "11px 0", borderRadius: 11, border: "1px solid var(--line)",
+                background: "var(--surface)", color: "var(--ink-2)", fontWeight: 700, fontSize: 13, cursor: "pointer",
+              }}>ยกเลิก</button>
+              <button onClick={() => { deleteTenant(sel.id); setSelId(null); setConfirmDel(false); }} style={{
+                padding: "11px 0", borderRadius: 11, border: "none",
+                background: "var(--danger)", color: "white", fontWeight: 700, fontSize: 13, cursor: "pointer",
+              }}>ลบถาวร</button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  /* ── List view ── */
+  return (
+    <div style={{ padding: "12px 16px 90px" }}>
+      <button onClick={onBack} style={{ background: "transparent", border: "none", color: "var(--ink-2)",
+        cursor: "pointer", fontSize: 12.5, fontWeight: 700, padding: 0, marginBottom: 14,
+        display: "flex", alignItems: "center", gap: 4 }}>
+        <IconArrowLeft size={14} stroke="var(--ink-2)"/> กลับ
+      </button>
+
+      <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: -0.3, marginBottom: 2 }}>ผู้เช่าเก่า</div>
+      <div style={{ fontSize: 12.5, color: "var(--ink-3)", marginBottom: 14 }}>
+        {exTenants.length} คน · เลิกเช่าแล้ว
+      </div>
+
+      {/* Search */}
+      <div style={{ display: "flex", gap: 8, alignItems: "center", background: "var(--surface)",
+        borderRadius: 11, padding: "9px 12px", border: "1px solid var(--line)", marginBottom: 14 }}>
+        <IconSearch size={15} stroke="var(--ink-3)"/>
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder="ค้นหาชื่อ หรือเลขห้องเดิม" style={{
+          flex: 1, border: "none", outline: "none", background: "transparent",
+          fontSize: 13, color: "var(--ink)", fontFamily: "var(--font-thai)",
+        }}/>
+      </div>
+
+      {exTenants.length === 0 && (
+        <div style={{ textAlign: "center", padding: "48px 0", color: "var(--ink-3)", fontSize: 13 }}>
+          ยังไม่มีผู้เช่าเก่า
+        </div>
+      )}
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {exTenants.map(t => (
+          <button key={t.id} onClick={() => { setSelId(t.id); setRerentRoom(""); setConfirmDel(false); }}
+            className="lift" style={{
+              display: "flex", alignItems: "center", gap: 12, padding: 12,
+              background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 12,
+              cursor: "pointer", textAlign: "left", width: "100%",
+            }}>
+            {/* Avatar initial */}
+            <div style={{ width: 42, height: 42, borderRadius: 11, flexShrink: 0,
+              background: "oklch(0.55 0.16 25)", display: "flex", alignItems: "center",
+              justifyContent: "center", fontSize: 16, fontWeight: 700, color: "white" }}>
+              {t.name?.[0] || "?"}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13.5, fontWeight: 700, whiteSpace: "nowrap",
+                overflow: "hidden", textOverflow: "ellipsis" }}>{t.name}</div>
+              <div className="num" style={{ fontSize: 11.5, color: "var(--ink-3)", marginTop: 2 }}>
+                ห้องเดิม {t.prevRoom || "—"} · {t.phone || "ไม่มีเบอร์"}
+              </div>
+              {t.evictedY != null && (
+                <div style={{ fontSize: 11, color: "oklch(0.55 0.10 25)", marginTop: 1 }}>
+                  ออก {dl(t.evictedY, t.evictedM)}
+                </div>
+              )}
+            </div>
+            <IconChevR size={15} stroke="var(--ink-3)"/>
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
