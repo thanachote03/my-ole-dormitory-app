@@ -47,24 +47,24 @@ const DEFAULT_OWNER = {
 };
 
 export function DataProvider({ children }) {
-  const [rooms, setRooms] = useState(SEED_ROOMS);
-  const [tenants, setTenants] = useState(SEED_TENANTS);
-  const [payments, setPayments] = useState(SEED_PAYMENTS);
-  const [repairs, setRepairs] = useState(SEED_REPAIRS);
-  const [banks, setBanks] = useState(SEED_BANKS);
-  const [slips, setSlips] = useState(SEED_SLIPS);
-  const [utils, setUtils] = useState(SEED_UTILS);
-  const [notifs, setNotifs] = useState(SEED_NOTIFS);
-  const [billing, setBilling] = useState(SEED_BILLING);
+  // Start with empty state — prevents flash of demo/seed data before Supabase loads.
+  // SEED_* data is used only as an offline fallback (see catch block below).
+  const [rooms, setRooms] = useState([]);
+  const [tenants, setTenants] = useState([]);
+  const [payments, setPayments] = useState([]);
+  const [repairs, setRepairs] = useState([]);
+  const [banks, setBanks] = useState([]);
+  const [slips, setSlips] = useState([]);
+  const [utils, setUtils] = useState([]);
+  const [notifs, setNotifs] = useState([]);
+  const [billing, setBilling] = useState({ defaultElecFlat: 0, defaultWaterFlat: 0, monthly: {} });
   const [ownerPin, setOwnerPin] = useState("admin1234");
   const [owner, setOwnerState] = useState(DEFAULT_OWNER);
   const [staff, setStaff] = useState([]);
   const [loaded, setLoaded] = useState(false);
 
-  // Hydrate from Supabase; tables that don't exist or fail simply keep the seed.
-  // If Supabase has data, it REPLACES the seed (so the deployed app shows real data,
-  // not stale seed). Empty Supabase tables also wipe the seed — this matches production
-  // expectations where seed shouldn't leak through.
+  // Hydrate from Supabase. On success, server data replaces the empty initial state.
+  // On failure (Supabase unreachable), SEED_* demo data is used as an offline fallback.
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -106,8 +106,19 @@ export function DataProvider({ children }) {
           }
         }
       } catch (e) {
-        // Supabase not reachable — stay on seed
+        // Supabase not reachable — load SEED demo data as offline fallback
         console.warn("[DataProvider] Supabase load failed, using seed:", e?.message || e);
+        if (!cancelled) {
+          setRooms(SEED_ROOMS);
+          setTenants(SEED_TENANTS.map(adaptTenant));
+          setPayments(SEED_PAYMENTS);
+          setRepairs(SEED_REPAIRS);
+          setBanks(SEED_BANKS);
+          setSlips(SEED_SLIPS.map(adaptSlip));
+          setUtils(SEED_UTILS);
+          setNotifs(SEED_NOTIFS);
+          setBilling(SEED_BILLING);
+        }
       } finally {
         if (!cancelled) setLoaded(true);
       }

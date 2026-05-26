@@ -1,6 +1,6 @@
 // Dormitory · Soft Pastel Redesign — entry shell
 import { useEffect, useState } from "react";
-import { DataProvider } from "./design/DataContext";
+import { DataProvider, useData } from "./design/DataContext";
 import { LoginScreen, LoginFormScreen, TenantApp } from "./design/mobile";
 import { OwnerDesktop } from "./design/owner";
 import { OwnerMobile } from "./design/owner-mobile";
@@ -72,6 +72,7 @@ function loadStoredAuth() {
 }
 
 function Shell() {
+  const { loaded } = useData();
   const [auth, setAuthState] = useState(loadStoredAuth);
   const [pickRole, setPickRole] = useState(null);
   const mobile = useIsMobile();
@@ -106,6 +107,13 @@ function Shell() {
     setPickRole(null);
   };
 
+  // While Supabase is still loading: show a spinner so the user never sees
+  // a flash of empty state or stale seed/demo data.
+  // (Login screen is exempt — it doesn't need Supabase data to render.)
+  if (auth && !loaded) {
+    return <DataLoadingScreen />;
+  }
+
   if (auth?.role === "owner") {
     return mobile
       ? <OwnerMobile staffRole={auth.staffRole} staffName={auth.staffName} onLogout={handleLogout}/>
@@ -131,6 +139,25 @@ function Shell() {
     <MobileCanvas>
       <LoginScreen onPick={(r) => setPickRole(r)}/>
     </MobileCanvas>
+  );
+}
+
+function DataLoadingScreen() {
+  return (
+    <div style={{
+      minHeight: "100vh", display: "flex", flexDirection: "column",
+      alignItems: "center", justifyContent: "center",
+      background: "var(--bg)", gap: 18,
+    }}>
+      <div style={{
+        width: 48, height: 48,
+        border: "4px solid var(--brand)", borderTopColor: "transparent",
+        borderRadius: "50%", animation: "spin 0.75s linear infinite",
+      }}/>
+      <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink-3)" }}>
+        กำลังโหลดข้อมูล…
+      </div>
+    </div>
   );
 }
 
