@@ -1200,12 +1200,36 @@ export function SettingsModal({ onClose }) {
   const [elecRate, setElecRate] = useState(owner.elecRate ?? UTIL_RATE.electric);
   const [waterRate, setWaterRate] = useState(owner.waterRate ?? UTIL_RATE.water);
 
-  const [curPass, setCurPass] = useState("");
-  const [newPass, setNewPass] = useState("");
-  const [newPass2, setNewPass2] = useState("");
-  const [showPass, setShowPass] = useState(false);
-  const [newUsername, setNewUsername] = useState(ownerUsername || "admin");
   const [savedFlash, setSavedFlash] = useState(null);
+
+  // ─── Unified account management state ───
+  const [acctEditId,   setAcctEditId]   = useState(null);
+  const [acctAdding,   setAcctAdding]   = useState(false);
+  const [acctForm,     setAcctForm]     = useState({ name: "", username: "", password: "", role: "meter" });
+  const [acctShowPass, setAcctShowPass] = useState(false);
+
+  const saveAccount = async () => {
+    const u = acctForm.username.trim();
+    if (!u || !acctForm.password) { setSavedFlash({ kind: "error", msg: "กรุณากรอกชื่อผู้ใช้และรหัสผ่าน" }); return; }
+    const dup = staff.find(s => s.username.toLowerCase() === u.toLowerCase() && s.id !== acctEditId);
+    if (dup) { setSavedFlash({ kind: "error", msg: "ชื่อผู้ใช้นี้มีอยู่แล้ว" }); return; }
+    if (acctEditId) {
+      const original = staff.find(s => s.id === acctEditId);
+      // Update staff table (handles DB + state for all fields)
+      await updateStaff(acctEditId, { username: u, password: acctForm.password, role: acctForm.role, name: acctForm.name });
+      // If this is the owner's primary account, also sync config keys
+      if (original?.username.toLowerCase() === (ownerUsername || "admin").toLowerCase()) {
+        if (u !== original.username) await updateOwnerUsername(u);
+        if (acctForm.password !== original.password) await updateOwner({ password: acctForm.password });
+      }
+      setSavedFlash({ kind: "ok", msg: "บันทึกแล้ว ✓" });
+      setAcctEditId(null);
+    } else {
+      await addStaff({ username: u, password: acctForm.password, role: acctForm.role, name: acctForm.name });
+      setSavedFlash({ kind: "ok", msg: `เพิ่มบัญชี "@${u}" เรียบร้อย` });
+      setAcctAdding(false);
+    }
+  };
 
   const saveProfile = () => {
     updateOwner({ name, displayName, phone, email });
@@ -1223,21 +1247,6 @@ export function SettingsModal({ onClose }) {
   const saveBilling = () => {
     updateOwner({ dueDay, billDay, elecRate, waterRate });
     setSavedFlash({ kind: "ok", msg: "บันทึกการตั้งค่าค่าน้ำ-ไฟเรียบร้อย" });
-  };
-  const saveUsername = async () => {
-    const trimmed = newUsername.trim();
-    if (!trimmed) { setSavedFlash({ kind: "error", msg: "ชื่อผู้ใช้ต้องไม่ว่าง" }); return; }
-    if (trimmed.length < 3) { setSavedFlash({ kind: "error", msg: "ชื่อผู้ใช้ต้องอย่างน้อย 3 ตัวอักษร" }); return; }
-    await updateOwnerUsername(trimmed);
-    setSavedFlash({ kind: "ok", msg: `เปลี่ยนชื่อผู้ใช้เป็น "${trimmed}" แล้ว` });
-  };
-  const savePassword = () => {
-    if (newPass.length < 8) { setSavedFlash({ kind: "error", msg: "รหัสผ่านใหม่ต้องอย่างน้อย 8 ตัวอักษร" }); return; }
-    if (newPass !== newPass2) { setSavedFlash({ kind: "error", msg: "รหัสผ่านใหม่ไม่ตรงกัน" }); return; }
-    if (!curPass) { setSavedFlash({ kind: "error", msg: "กรุณากรอกรหัสผ่านปัจจุบัน" }); return; }
-    updateOwner({ password: newPass });
-    setSavedFlash({ kind: "ok", msg: "เปลี่ยนรหัสผ่านเรียบร้อย" });
-    setCurPass(""); setNewPass(""); setNewPass2("");
   };
 
   return (
@@ -1433,109 +1442,208 @@ export function SettingsModal({ onClose }) {
           )}
 
           {section === "password" && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
 
-              {/* ── Username change card ── */}
-              <div style={{ background: "var(--surface-2)", borderRadius: 14, padding: 16, border: "1px solid var(--line)" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-                  <div style={{ width: 32, height: 32, borderRadius: 9, background: "var(--brand-soft)",
-                    display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    <IconUser size={16} stroke="var(--brand)"/>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)" }}>ชื่อผู้ใช้ (Username)</div>
-                    <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginTop: 1 }}>
-                      ปัจจุบัน: <span className="num" style={{ fontWeight: 700, color: "var(--brand-ink)" }}>{ownerUsername || "admin"}</span>
+              {/* ── Info banner ── */}
+              <div style={{ padding: "10px 14px", background: "var(--brand-soft)", borderRadius: 12,
+                display: "flex", alignItems: "flex-start", gap: 10 }}>
+                <IconUsers size={15} stroke="var(--brand)"/>
+                <div style={{ fontSize: 12, color: "var(--ink-2)", lineHeight: 1.6 }}>
+                  กดปุ่ม <b>แก้ไข</b> ที่บัญชีใดก็ได้ เพื่อเปลี่ยน ชื่อผู้ใช้ · รหัสผ่าน · สิทธิ์ ·
+                  บัญชี <b>Admin</b> เข้าได้ทุกหน้า · <b>จดมิเตอร์</b> เข้าได้เฉพาะหน้าจดมิเตอร์
+                </div>
+              </div>
+
+              {/* ── Account cards ── */}
+              {staff.map(s => {
+                const isEditing = acctEditId === s.id;
+                const adminCount = staff.filter(x => x.role === "admin").length;
+                const canDelete = s.role !== "admin" || adminCount > 1;
+
+                if (isEditing) return (
+                  <div key={s.id} style={{ padding: 14, background: "var(--surface-2)",
+                    border: "1.5px solid var(--brand)", borderRadius: 13,
+                    display: "flex", flexDirection: "column", gap: 12 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "var(--brand-ink)" }}>
+                      แก้ไขบัญชี @{s.username}
+                    </div>
+                    <AtField label="ชื่อ-นามสกุล (แสดงในระบบ)">
+                      <input value={acctForm.name} onChange={e => setAcctForm(f => ({ ...f, name: e.target.value }))}
+                        placeholder="เช่น สมชาย ใจดี" style={atInputStyle}/>
+                    </AtField>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                      <AtField label="ชื่อผู้ใช้ (login)">
+                        <input value={acctForm.username} onChange={e => setAcctForm(f => ({ ...f, username: e.target.value }))}
+                          style={atInputStyle} autoComplete="off"/>
+                      </AtField>
+                      <AtField label="รหัสผ่าน">
+                        <div style={{ position: "relative" }}>
+                          <input type={acctShowPass ? "text" : "password"} value={acctForm.password}
+                            onChange={e => setAcctForm(f => ({ ...f, password: e.target.value }))}
+                            style={{ ...atInputStyle, paddingRight: 40 }} autoComplete="new-password"/>
+                          <button onClick={() => setAcctShowPass(v => !v)} style={{
+                            position: "absolute", right: 6, top: 6, width: 28, height: 28, border: "none",
+                            background: "transparent", cursor: "pointer", color: "var(--ink-3)", fontSize: 11, fontWeight: 700,
+                          }}>{acctShowPass ? "ซ่อน" : "ดู"}</button>
+                        </div>
+                      </AtField>
+                    </div>
+                    <AtField label="สิทธิ์การเข้าถึง">
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                        {[
+                          { v: "admin", label: "Admin", desc: "เข้าได้ทุกอย่าง" },
+                          { v: "meter", label: "จดมิเตอร์", desc: "เฉพาะหน้าจดมิเตอร์น้ำ-ไฟ" },
+                        ].map(opt => (
+                          <button key={opt.v} onClick={() => setAcctForm(f => ({ ...f, role: opt.v }))} style={{
+                            padding: "10px 12px", textAlign: "left", cursor: "pointer", borderRadius: 11,
+                            border: `1.5px solid ${acctForm.role === opt.v ? "var(--brand)" : "var(--line)"}`,
+                            background: acctForm.role === opt.v ? "var(--brand-soft)" : "var(--surface)",
+                          }}>
+                            <div style={{ fontSize: 12.5, fontWeight: 700, color: acctForm.role === opt.v ? "var(--brand-ink)" : "var(--ink)" }}>
+                              {opt.label}
+                            </div>
+                            <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 2 }}>{opt.desc}</div>
+                          </button>
+                        ))}
+                      </div>
+                    </AtField>
+                    {savedFlash && <FlashMsg flash={savedFlash}/>}
+                    <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                      <button onClick={() => { setAcctEditId(null); setSavedFlash(null); }} style={{
+                        padding: "9px 16px", borderRadius: 10, border: "1px solid var(--line)",
+                        background: "var(--surface)", cursor: "pointer", fontSize: 12.5, fontWeight: 600, color: "var(--ink-2)",
+                      }}>ยกเลิก</button>
+                      <button onClick={saveAccount} style={{
+                        padding: "9px 18px", borderRadius: 10, border: "none",
+                        background: "var(--brand)", color: "white", cursor: "pointer", fontSize: 12.5, fontWeight: 700,
+                      }}>บันทึก</button>
                     </div>
                   </div>
-                </div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <input
-                    value={newUsername}
-                    onChange={e => setNewUsername(e.target.value)}
-                    placeholder="ชื่อผู้ใช้ใหม่ (อย่างน้อย 3 ตัวอักษร)"
-                    style={{ ...atInputStyle, flex: 1 }}
-                  />
-                  <button
-                    onClick={saveUsername}
-                    disabled={newUsername.trim() === (ownerUsername || "admin") || newUsername.trim().length < 3}
-                    style={{
-                      padding: "10px 16px", borderRadius: 10, border: "none", fontWeight: 700, fontSize: 13,
-                      cursor: (newUsername.trim() === (ownerUsername || "admin") || newUsername.trim().length < 3) ? "not-allowed" : "pointer",
-                      background: (newUsername.trim() === (ownerUsername || "admin") || newUsername.trim().length < 3) ? "var(--surface)" : "var(--brand)",
-                      color: (newUsername.trim() === (ownerUsername || "admin") || newUsername.trim().length < 3) ? "var(--ink-4)" : "white",
-                      border: (newUsername.trim() === (ownerUsername || "admin") || newUsername.trim().length < 3) ? "1px solid var(--line)" : "none",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    บันทึกชื่อผู้ใช้
-                  </button>
-                </div>
-              </div>
+                );
 
-              {/* ── Divider ── */}
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <div style={{ flex: 1, height: 1, background: "var(--line)" }}/>
-                <span style={{ fontSize: 11, fontWeight: 700, color: "var(--ink-4)", textTransform: "uppercase", letterSpacing: 1 }}>เปลี่ยนรหัสผ่าน</span>
-                <div style={{ flex: 1, height: 1, background: "var(--line)" }}/>
-              </div>
+                return (
+                  <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 12,
+                    padding: "12px 14px", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 13 }}>
+                    <div style={{ width: 38, height: 38, borderRadius: 11, flexShrink: 0,
+                      background: s.role === "admin" ? "var(--brand-soft)" : "var(--surface-2)",
+                      display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      {s.role === "admin"
+                        ? <IconLock size={15} stroke="var(--brand)"/>
+                        : <IconSparkle size={15} stroke="var(--ink-3)"/>}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
+                        <span style={{ fontSize: 13.5, fontWeight: 700 }}>{s.name || s.username}</span>
+                        <span style={{
+                          background: s.role === "admin" ? "var(--brand-soft)" : "var(--surface-2)",
+                          color: s.role === "admin" ? "var(--brand-ink)" : "var(--ink-3)",
+                          fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 100,
+                        }}>{s.role === "admin" ? "Admin" : "จดมิเตอร์"}</span>
+                      </div>
+                      <div className="num" style={{ fontSize: 11.5, color: "var(--ink-3)", marginTop: 2 }}>
+                        @{s.username} · {"●".repeat(Math.min(s.password?.length ?? 0, 8))}
+                      </div>
+                    </div>
+                    <button onClick={() => {
+                      setAcctEditId(s.id); setAcctAdding(false);
+                      setAcctForm({ name: s.name || "", username: s.username, password: s.password, role: s.role });
+                      setAcctShowPass(false); setSavedFlash(null);
+                    }} style={{ padding: "6px 12px", borderRadius: 9, border: "1px solid var(--line)",
+                      background: "var(--surface-2)", cursor: "pointer", fontSize: 12, fontWeight: 600, color: "var(--ink-2)" }}>
+                      แก้ไข
+                    </button>
+                    {canDelete ? (
+                      <button onClick={async () => {
+                        if (!window.confirm(`ลบบัญชี "${s.username}" ออกจากระบบ?`)) return;
+                        await deleteStaff(s.id);
+                        setSavedFlash({ kind: "ok", msg: `ลบ "@${s.username}" แล้ว` });
+                      }} style={{ width: 32, height: 32, borderRadius: 9, border: "1px solid var(--line)",
+                        background: "var(--surface-2)", cursor: "pointer",
+                        display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        <IconTrash size={13} stroke="var(--danger)"/>
+                      </button>
+                    ) : <div style={{ width: 32 }}/>}
+                  </div>
+                );
+              })}
 
-              <div style={{ padding: "12px 14px", background: "var(--info-soft)", borderRadius: 12,
-                display: "flex", alignItems: "flex-start", gap: 10 }}>
-                <IconLock size={16} stroke="var(--info)"/>
-                <div style={{ fontSize: 12, color: "var(--ink-2)", lineHeight: 1.5 }}>
-                  หลังเปลี่ยนรหัสผ่าน คุณจะต้องเข้าสู่ระบบใหม่ในอุปกรณ์อื่น ๆ ทั้งหมด
-                </div>
-              </div>
-              <AtField label="รหัสผ่านปัจจุบัน">
-                <input value={curPass} onChange={e => setCurPass(e.target.value)}
-                  type={showPass ? "text" : "password"} placeholder="กรอกรหัสผ่านปัจจุบัน"
-                  style={{ ...atInputStyle, fontFamily: "var(--font-num)" }}/>
-              </AtField>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                <AtField label="รหัสผ่านใหม่">
-                  <div style={{ position: "relative" }}>
-                    <input value={newPass} onChange={e => setNewPass(e.target.value)}
-                      type={showPass ? "text" : "password"} placeholder="อย่างน้อย 8 ตัวอักษร"
-                      style={{ ...atInputStyle, paddingRight: 38, fontFamily: "var(--font-num)" }}/>
-                    <button onClick={() => setShowPass(!showPass)} style={{
-                      position: "absolute", right: 6, top: 6, width: 28, height: 28, border: "none",
-                      background: "transparent", cursor: "pointer", color: "var(--ink-3)", fontSize: 11, fontWeight: 700,
-                    }}>{showPass ? "ซ่อน" : "ดู"}</button>
+              {/* ── Add new account form ── */}
+              {acctAdding && (
+                <div style={{ padding: 14, background: "var(--surface-2)",
+                  border: "1.5px dashed var(--brand)", borderRadius: 13,
+                  display: "flex", flexDirection: "column", gap: 12 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700 }}>เพิ่มบัญชีทีมงานใหม่</div>
+                  <AtField label="ชื่อ-นามสกุล (แสดงในระบบ)">
+                    <input value={acctForm.name} onChange={e => setAcctForm(f => ({ ...f, name: e.target.value }))}
+                      placeholder="เช่น สมชาย ใจดี" style={atInputStyle}/>
+                  </AtField>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                    <AtField label="ชื่อผู้ใช้ (login)">
+                      <input value={acctForm.username} onChange={e => setAcctForm(f => ({ ...f, username: e.target.value }))}
+                        placeholder="เช่น meter1" style={atInputStyle} autoComplete="off"/>
+                    </AtField>
+                    <AtField label="รหัสผ่าน">
+                      <div style={{ position: "relative" }}>
+                        <input type={acctShowPass ? "text" : "password"} value={acctForm.password}
+                          onChange={e => setAcctForm(f => ({ ...f, password: e.target.value }))}
+                          placeholder="กรอกรหัสผ่าน"
+                          style={{ ...atInputStyle, paddingRight: 40 }} autoComplete="new-password"/>
+                        <button onClick={() => setAcctShowPass(v => !v)} style={{
+                          position: "absolute", right: 6, top: 6, width: 28, height: 28, border: "none",
+                          background: "transparent", cursor: "pointer", color: "var(--ink-3)", fontSize: 11, fontWeight: 700,
+                        }}>{acctShowPass ? "ซ่อน" : "ดู"}</button>
+                      </div>
+                    </AtField>
                   </div>
-                </AtField>
-                <AtField label="ยืนยันรหัสผ่านใหม่">
-                  <input value={newPass2} onChange={e => setNewPass2(e.target.value)}
-                    type={showPass ? "text" : "password"} placeholder="พิมพ์รหัสอีกครั้ง"
-                    style={{ ...atInputStyle, fontFamily: "var(--font-num)" }}/>
-                </AtField>
-              </div>
-              {newPass.length > 0 && (
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <div style={{ flex: 1, height: 4, borderRadius: 4, background: "var(--surface-2)", overflow: "hidden" }}>
-                    <div style={{
-                      height: "100%", width: `${Math.min(100, newPass.length * 10)}%`,
-                      background: newPass.length < 8 ? "var(--warn)" : newPass.length < 12 ? "oklch(0.75 0.13 80)" : "var(--ok)",
-                    }}/>
+                  <AtField label="สิทธิ์การเข้าถึง">
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                      {[
+                        { v: "admin", label: "Admin", desc: "เข้าได้ทุกอย่าง" },
+                        { v: "meter", label: "จดมิเตอร์", desc: "เฉพาะหน้าจดมิเตอร์น้ำ-ไฟ" },
+                      ].map(opt => (
+                        <button key={opt.v} onClick={() => setAcctForm(f => ({ ...f, role: opt.v }))} style={{
+                          padding: "10px 12px", textAlign: "left", cursor: "pointer", borderRadius: 11,
+                          border: `1.5px solid ${acctForm.role === opt.v ? "var(--brand)" : "var(--line)"}`,
+                          background: acctForm.role === opt.v ? "var(--brand-soft)" : "var(--surface)",
+                        }}>
+                          <div style={{ fontSize: 12.5, fontWeight: 700, color: acctForm.role === opt.v ? "var(--brand-ink)" : "var(--ink)" }}>
+                            {opt.label}
+                          </div>
+                          <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 2 }}>{opt.desc}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </AtField>
+                  {savedFlash && <FlashMsg flash={savedFlash}/>}
+                  <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                    <button onClick={() => { setAcctAdding(false); setSavedFlash(null); }} style={{
+                      padding: "9px 16px", borderRadius: 10, border: "1px solid var(--line)",
+                      background: "var(--surface)", cursor: "pointer", fontSize: 12.5, fontWeight: 600, color: "var(--ink-2)",
+                    }}>ยกเลิก</button>
+                    <button onClick={saveAccount} style={{
+                      padding: "9px 18px", borderRadius: 10, border: "none",
+                      background: "var(--brand)", color: "white", cursor: "pointer", fontSize: 12.5, fontWeight: 700,
+                    }}>เพิ่มบัญชี</button>
                   </div>
-                  <span style={{ fontSize: 10.5, fontWeight: 700,
-                    color: newPass.length < 8 ? "var(--warn)" : newPass.length < 12 ? "var(--ink-2)" : "var(--ok)" }}>
-                    {newPass.length < 8 ? "อ่อน" : newPass.length < 12 ? "ปานกลาง" : "แข็งแรง"}
-                  </span>
                 </div>
               )}
-              {savedFlash && <FlashMsg flash={savedFlash}/>}
-              <SettingsFooter onCancel={onClose} onSave={savePassword} label="เปลี่ยนรหัสผ่าน"/>
 
-              {/* ── Divider ── */}
-              <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 6 }}>
-                <div style={{ flex: 1, height: 1, background: "var(--line)" }}/>
-                <span style={{ fontSize: 11, fontWeight: 700, color: "var(--ink-4)", textTransform: "uppercase", letterSpacing: 1 }}>ทีมงาน / สิทธิ์เข้าถึง</span>
-                <div style={{ flex: 1, height: 1, background: "var(--line)" }}/>
-              </div>
-
-              {/* ── Staff section (inline) ── */}
-              <StaffSettings staff={staff} addStaff={addStaff} updateStaff={updateStaff} deleteStaff={deleteStaff}/>
+              {/* ── Add button & flash (when not in edit/add mode) ── */}
+              {!acctAdding && !acctEditId && (
+                <>
+                  {savedFlash && <FlashMsg flash={savedFlash}/>}
+                  <button onClick={() => {
+                    setAcctAdding(true); setAcctEditId(null);
+                    setAcctForm({ name: "", username: "", password: "", role: "meter" });
+                    setAcctShowPass(false); setSavedFlash(null);
+                  }} style={{ padding: "11px 14px", borderRadius: 11,
+                    border: "1.5px dashed var(--brand)", background: "var(--brand-soft)", cursor: "pointer",
+                    fontSize: 13, fontWeight: 700, color: "var(--brand-ink)",
+                    display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                    <IconPlus size={14} stroke="var(--brand)"/> เพิ่มบัญชีทีมงานใหม่
+                  </button>
+                </>
+              )}
             </div>
           )}
 
