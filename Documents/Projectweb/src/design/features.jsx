@@ -39,11 +39,14 @@ export function PaymentDueBanner({ payment, room, onPay, onDismiss }) {
       <button onClick={onPay} style={{
         background: "white", color: overdue ? "var(--danger)" : "var(--brand-2)",
         border: "none", padding: "7px 13px", borderRadius: 100, fontWeight: 700, fontSize: 12, cursor: "pointer", flexShrink: 0,
+        position: "relative", zIndex: 2,
       }}>ชำระ</button>
-      <button onClick={onDismiss} style={{
-        background: "transparent", border: "none", cursor: "pointer", color: "white", padding: 2,
-        position: "absolute", top: 6, right: 6,
-      }}><DI.IconX size={14} stroke="white"/></button>
+      <button onClick={onDismiss} aria-label="ปิด" style={{
+        background: "rgba(255,255,255,0.18)", border: "none", cursor: "pointer", color: "white",
+        width: 22, height: 22, borderRadius: "50%",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        position: "absolute", top: 4, right: 4, zIndex: 1, padding: 0,
+      }}><DI.IconX size={12} stroke="white"/></button>
     </div>
   );
 }
