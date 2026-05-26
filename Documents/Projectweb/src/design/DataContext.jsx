@@ -23,6 +23,13 @@ const adaptTenant = (t) => ({
   sinceDay: t.sinceDay ?? t.since_day ?? 1,
 });
 
+// Supabase slips store image_url (snake_case); UI components read imageUrl (camelCase).
+const adaptSlip = (s) => ({
+  ...s,
+  imageUrl: s.imageUrl ?? s.image_url ?? null,
+  thumb:    s.thumb    ?? "slip-a",
+});
+
 const DEFAULT_OWNER = {
   name: "สมพร เจริญสุข",
   displayName: "คุณสมพร",
@@ -82,7 +89,7 @@ export function DataProvider({ children }) {
         if (!p?.error    && p?.data)    setPayments(p.data);
         if (!rep?.error  && rep?.data)  setRepairs(rep.data);
         if (!util?.error && util?.data) setUtils(util.data);
-        if (!slip?.error && slip?.data) setSlips(slip.data);
+        if (!slip?.error && slip?.data) setSlips(slip.data.map(adaptSlip));
         if (!bank?.error && bank?.data) setBanks(bank.data);
         if (!notif?.error && notif?.data) setNotifs(notif.data);
         if (!st?.error && st?.data) setStaff(st.data);
@@ -446,8 +453,8 @@ export function DataProvider({ children }) {
     try { await supabase.from("slips").delete().eq("id", id); } catch {}
   }, []);
 
-  const addSlip = useCallback(({ tenant_id, room_id, year, month, amount, bank, imageUrl, filename }) => {
-    const id = "S" + Date.now();
+  const addSlip = useCallback(async ({ tenant_id, room_id, year, month, amount, bank, imageUrl, filename }) => {
+    const id = "SL" + Date.now();
     const row = {
       id, tenant_id, room_id, year, month, amount, bank,
       uploaded_at: new Date().toLocaleString("th-TH"),
@@ -463,19 +470,33 @@ export function DataProvider({ children }) {
       time: "เมื่อสักครู่", unread: true, link: "slips",
     };
     setNotifs(prev => [notif, ...prev]);
-    // Persist to Supabase so owner sees the slip on next refresh / other devices
+    // Persist to Supabase — must await both; lazy builder never fires without it
     try {
-      supabase.from("slips").insert({
+      await supabase.from("slips").insert({
         id, tenant_id, room_id, year, month, amount, bank,
         image_url: imageUrl || null, filename: filename || null,
         status: "pending",
       });
-      supabase.from("notifs").insert({
+      await supabase.from("notifs").insert({
         id: notif.id, type: notif.type, title: notif.title, msg: notif.msg,
         time: notif.time, unread: true, link: notif.link,
       });
     } catch {}
   }, [tenants]);
+
+  // Re-fetch slips + notifs from Supabase (owner calls this to see a tenant's newly uploaded slip
+  // without doing a full page reload — the cross-session state gap means the owner's in-memory
+  // copy is stale until explicitly refreshed or the page reloads).
+  const refreshSlips = useCallback(async () => {
+    try {
+      const [slipRes, notifRes] = await Promise.all([
+        supabase.from("slips").select("*").order("created_at", { ascending: false }),
+        supabase.from("notifs").select("*").order("created_at", { ascending: false }),
+      ]);
+      if (!slipRes?.error && slipRes?.data) setSlips(slipRes.data.map(adaptSlip));
+      if (!notifRes?.error && notifRes?.data) setNotifs(notifRes.data);
+    } catch {}
+  }, []);
 
   // Save an initial "seed" meter reading (use=0, amount=0) for move-in day.
   // isInitial records are used as prev baseline when recording the first real billing month.
@@ -685,7 +706,7 @@ export function DataProvider({ children }) {
     addTenant, addRoom, deleteRoom, updateOwnerPin, updateOwner,
     updateRepair, addRepair, deleteRepair, updateTenant, updateRoom,
     moveTenant, deleteTenant, evictTenant, reactivateTenant, bulkSaveUtils,
-    recordPayment, approveSlip, rejectSlip, deleteSlip, addSlip, saveUtilReading, saveInitialReading, markNotifsRead,
+    recordPayment, approveSlip, rejectSlip, deleteSlip, addSlip, refreshSlips, saveUtilReading, saveInitialReading, markNotifsRead,
     // billing
     resolveBilling, setRoomBilling, computePaymentTotal,
     // banks
@@ -697,7 +718,7 @@ export function DataProvider({ children }) {
        addTenant, addRoom, deleteRoom, updateOwnerPin, updateOwner,
        updateRepair, addRepair, deleteRepair, updateTenant, updateRoom,
        moveTenant, deleteTenant, evictTenant, reactivateTenant, bulkSaveUtils,
-       recordPayment, approveSlip, rejectSlip, deleteSlip, addSlip, saveUtilReading, saveInitialReading, markNotifsRead,
+       recordPayment, approveSlip, rejectSlip, deleteSlip, addSlip, refreshSlips, saveUtilReading, saveInitialReading, markNotifsRead,
        resolveBilling, setRoomBilling, computePaymentTotal,
        addBank, updateBank, deleteBank, setPrimaryBank,
        addStaff, updateStaff, deleteStaff]);

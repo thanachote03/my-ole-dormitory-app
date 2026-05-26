@@ -948,11 +948,18 @@ function MMorePage({ onBulk, setTab, onPickMonth, onOpenSettings, onLogout, onSl
 
 // ─── Mobile Slips Approval Page ────────────────────────────────────────────
 function MSlipsPage({ owner, onBack }) {
-  const { slips, tenants, approveSlip, rejectSlip, deleteSlip } = useData();
+  const { slips, tenants, approveSlip, rejectSlip, deleteSlip, refreshSlips } = useData();
   const [filter, setFilter] = useState("pending");
   const [selId, setSelId] = useState(null);
   const [lightbox, setLightbox] = useState(null);
   const [confirmDel, setConfirmDel] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await refreshSlips();
+    setRefreshing(false);
+  };
 
   const list = slips.filter(s => filter === "all" || s.status === filter)
     .sort((a, b) => (b.uploaded_at || "").localeCompare(a.uploaded_at || ""));
@@ -1080,7 +1087,18 @@ function MSlipsPage({ owner, onBack }) {
         <IconArrowLeft size={14} stroke="var(--ink-2)"/> กลับ
       </button>
 
-      <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: -0.3, marginBottom: 4 }}>อนุมัติสลิป</div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+        <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: -0.3 }}>อนุมัติสลิป</div>
+        <button onClick={handleRefresh} disabled={refreshing} style={{
+          display: "flex", alignItems: "center", gap: 5, padding: "6px 12px",
+          borderRadius: 100, border: "1px solid var(--line)", background: "var(--surface)",
+          color: "var(--ink-2)", fontSize: 12, fontWeight: 600, cursor: "pointer",
+          opacity: refreshing ? 0.5 : 1,
+        }}>
+          <span style={{ display: "inline-block", animation: refreshing ? "spin 0.8s linear infinite" : "none" }}>⟳</span>
+          {refreshing ? "กำลังโหลด…" : "รีเฟรช"}
+        </button>
+      </div>
       <div style={{ fontSize: 12.5, color: "var(--ink-3)", marginBottom: 14 }}>{pendingCount} รายการรอตรวจสอบ</div>
 
       {pendingCount > 0 && (

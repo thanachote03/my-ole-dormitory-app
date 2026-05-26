@@ -1876,15 +1876,22 @@ function HistoryPage() {
 
 // ─── SLIPS PAGE ─────────────────────────────────────────────────────────
 function SlipsPage() {
-  const { slips, tenants, approveSlip, rejectSlip, deleteSlip } = useData();
+  const { slips, tenants, approveSlip, rejectSlip, deleteSlip, refreshSlips } = useData();
   const [selId, setSelId] = useState(slips.find(s => s.status === "pending")?.id);
   const [filter, setFilter] = useState("pending");
   const [lightbox, setLightbox] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const sel = slips.find(s => s.id === selId) || slips.find(s => s.status === filter);
 
   const list = slips.filter(s => filter === "all" || s.status === filter);
   const tenant = sel ? tenants.find(t => t.id === sel.tenant_id) : null;
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await refreshSlips();
+    setRefreshing(false);
+  };
 
   return (
     <div>
@@ -1895,7 +1902,16 @@ function SlipsPage() {
             {slips.filter(s=>s.status==="pending").length} รายการรอตรวจสอบ · ผู้เช่าจะได้รับการยืนยันทันทีหลังกดอนุมัติ
           </div>
         </div>
-        <div style={{ display: "flex", gap: 6 }}>
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <button onClick={handleRefresh} disabled={refreshing} style={{
+            display: "flex", alignItems: "center", gap: 6, padding: "8px 14px",
+            borderRadius: 11, border: "1px solid var(--line)", background: "var(--surface)",
+            color: "var(--ink-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer",
+            opacity: refreshing ? 0.5 : 1,
+          }}>
+            <span style={{ display: "inline-block", animation: refreshing ? "spin 0.8s linear infinite" : "none" }}>⟳</span>
+            {refreshing ? "กำลังโหลด…" : "รีเฟรช"}
+          </button>
           {[
             { id: "pending",  label: "รออนุมัติ", n: slips.filter(s=>s.status==="pending").length },
             { id: "approved", label: "อนุมัติแล้ว", n: slips.filter(s=>s.status==="approved").length },

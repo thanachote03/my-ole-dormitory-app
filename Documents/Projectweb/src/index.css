@@ -110,3 +110,8 @@ input, select, textarea { font-family: inherit; color: inherit; }
   40%,60% { transform: translateX(3px); }
 }
 .shake { animation: shake .45s both; }
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
