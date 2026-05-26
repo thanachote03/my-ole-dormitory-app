@@ -1264,11 +1264,10 @@ export function SettingsModal({ onClose }) {
           {[
             { id: "profile",  label: "โปรไฟล์",     icon: IconUser },
             { id: "dorm",     label: "ข้อมูลหอพัก",  icon: IconBuilding },
-            { id: "password", label: "รหัสผ่าน",    icon: IconLock },
+            { id: "password", label: "บัญชีผู้ใช้",   icon: IconLock },
             { id: "notify",   label: "การแจ้งเตือน", icon: IconBell },
             { id: "billing",  label: "ค่าน้ำ-ไฟ",   icon: IconSparkle },
             { id: "banks",    label: "บัญชีธนาคาร", icon: IconCard },
-            { id: "staff",    label: "ทีมงาน",      icon: IconUsers },
             { id: "reset",    label: "รีเซ็ตข้อมูล", icon: IconTrash },
           ].map(s => {
             const Ic = s.icon;
@@ -1527,6 +1526,16 @@ export function SettingsModal({ onClose }) {
               )}
               {savedFlash && <FlashMsg flash={savedFlash}/>}
               <SettingsFooter onCancel={onClose} onSave={savePassword} label="เปลี่ยนรหัสผ่าน"/>
+
+              {/* ── Divider ── */}
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 6 }}>
+                <div style={{ flex: 1, height: 1, background: "var(--line)" }}/>
+                <span style={{ fontSize: 11, fontWeight: 700, color: "var(--ink-4)", textTransform: "uppercase", letterSpacing: 1 }}>ทีมงาน / สิทธิ์เข้าถึง</span>
+                <div style={{ flex: 1, height: 1, background: "var(--line)" }}/>
+              </div>
+
+              {/* ── Staff section (inline) ── */}
+              <StaffSettings staff={staff} addStaff={addStaff} updateStaff={updateStaff} deleteStaff={deleteStaff}/>
             </div>
           )}
 
@@ -1590,10 +1599,6 @@ export function SettingsModal({ onClose }) {
               {savedFlash && <FlashMsg flash={savedFlash}/>}
               <SettingsFooter onCancel={onClose} onSave={saveBilling} label="บันทึก"/>
             </div>
-          )}
-
-          {section === "staff" && (
-            <StaffSettings staff={staff} addStaff={addStaff} updateStaff={updateStaff} deleteStaff={deleteStaff}/>
           )}
 
           {section === "reset" && (
