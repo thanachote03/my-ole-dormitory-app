@@ -67,15 +67,21 @@ function Shell() {
 }
 
 function MobileCanvas({ children }) {
-  // Render the screen full-viewport — no iPhone frame chrome.
-  // The inner screens use flex:1 to grow, so a flex column min-height:100vh
-  // parent is all they need.
+  // Full-viewport background (cream), with the screen content centered in a
+  // mobile-width column. Real mobile devices see the column fill their screen;
+  // desktop sees a centered card-like column with cream sides.
   return (
     <div style={{
       minHeight: "100vh", display: "flex", flexDirection: "column",
-      background: "var(--bg)",
+      alignItems: "center", background: "var(--bg)",
     }}>
-      {children}
+      <div style={{
+        width: "100%", maxWidth: 440, flex: 1,
+        display: "flex", flexDirection: "column",
+        boxShadow: "var(--sh-2)",
+      }}>
+        {children}
+      </div>
     </div>
   );
 }
