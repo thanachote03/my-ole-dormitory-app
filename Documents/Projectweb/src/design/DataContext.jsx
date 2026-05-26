@@ -72,7 +72,10 @@ export function DataProvider({ children }) {
   const [billing, setBilling] = useState({ defaultElecFlat: 0, defaultWaterFlat: 0, monthly: {} });
   const [ownerPin,      setOwnerPin]      = useState("admin1234");
   const [ownerUsername, setOwnerUsername] = useState("admin");
-  const [owner, setOwnerState] = useState(DEFAULT_OWNER);
+  // Start blank (not demo) — real data loads from config "owner_profile" during hydration.
+  // DEFAULT_OWNER is kept only as a named reference; initial state is blank so a fresh
+  // install never shows fake demo data (สมพร เจริญสุข) after page refresh.
+  const [owner, setOwnerState] = useState(BLANK_OWNER);
   const [staff, setStaff] = useState([]);
   const [loaded, setLoaded] = useState(false);
 
@@ -161,11 +164,22 @@ export function DataProvider({ children }) {
   }, []);
 
   const updateOwner = useCallback(async (patch) => {
+    // Capture the merged-next state via functional updater (runs synchronously),
+    // then persist it to Supabase OUTSIDE the updater — side-effects inside
+    // setState callbacks are unreliable in React 18 concurrent mode.
+    let savedNext = null;
     setOwnerState(prev => {
-      const next = { ...prev, ...patch };
-      try { supabase.from("config").upsert({ key: "owner_profile", value: JSON.stringify(next) }); } catch {}
-      return next;
+      savedNext = { ...prev, ...patch };
+      return savedNext;
     });
+    if (savedNext) {
+      try {
+        const { error } = await supabase.from("config").upsert({ key: "owner_profile", value: JSON.stringify(savedNext) });
+        if (error) console.error("[updateOwner] Supabase:", error.message || error);
+      } catch (e) {
+        console.error("[updateOwner] network:", e?.message || e);
+      }
+    }
     if (patch.password) {
       const currentUsername = ownerUsername || "admin";
       setOwnerPin(patch.password);
@@ -383,7 +397,16 @@ export function DataProvider({ children }) {
         since_y: rowWithRoom.since_y, since_m: rowWithRoom.since_m,
         username: rowWithRoom.username, password: rowWithRoom.password,
       };
-      await supabase.from("tenants").insert(dbRow);
+      const { error: insertErr } = await supabase.from("tenants").insert(dbRow);
+      if (insertErr) {
+        console.error("[addTenant] Supabase insert:", insertErr.message || insertErr);
+        // Revert optimistic updates
+        setTenants(prev => prev.filter(t => t.id !== newId));
+        if (effectiveRoomId) {
+          setRooms(prev => prev.map(r => r.id === effectiveRoomId ? { ...r, status: "ว่าง" } : r));
+        }
+        return { ok: false, msg: insertErr.message || "เพิ่มผู้เช่าไม่สำเร็จ" };
+      }
       if (effectiveRoomId) {
         const startY = +since_y;
         const startM = +since_m;
@@ -399,8 +422,16 @@ export function DataProvider({ children }) {
           { onConflict: "room_id,year,month" }
         );
       }
-    } catch {}
-    return adapted;
+    } catch (e) {
+      console.error("[addTenant] network:", e?.message || e);
+      // Revert optimistic updates on network error
+      setTenants(prev => prev.filter(t => t.id !== newId));
+      if (effectiveRoomId) {
+        setRooms(prev => prev.map(r => r.id === effectiveRoomId ? { ...r, status: "ว่าง" } : r));
+      }
+      return { ok: false, msg: "เชื่อมต่อฐานข้อมูลไม่สำเร็จ" };
+    }
+    return { ok: true, tenant: adapted };
   }, [rooms]);
 
   const addRoom = useCallback(async (room) => {
@@ -867,11 +898,14 @@ export function DataProvider({ children }) {
       console.warn("[resetAllData] admin re-seed error:", e?.message);
     }
 
-    // 5. Re-seed default config so credentials survive a page refresh
+    // 5. Re-seed default config so credentials AND a blank owner profile survive a page refresh.
+    //    Without the owner_profile row, on the next page load the app would fall back to the
+    //    DEFAULT_OWNER demo data ("สมพร เจริญสุข") making it look as if the reset never worked.
     try {
       await supabase.from("config").upsert([
         { key: "owner_pin",      value: "admin1234" },
         { key: "owner_username", value: "admin" },
+        { key: "owner_profile",  value: JSON.stringify(BLANK_OWNER) },
       ]);
     } catch (e) {
       console.warn("[resetAllData] config re-seed error:", e?.message);

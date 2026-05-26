@@ -121,6 +121,8 @@ export function AddTenantModal({ onClose, onSubmit, initialRoom }) {
   const [initElec, setInitElec] = useState("");
   const [initWater, setInitWater] = useState("");
   const [meterOpen, setMeterOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveErr, setSaveErr] = useState(null);
 
   const onIdCardPick = (e) => {
     const f = e.target.files?.[0];
@@ -146,26 +148,40 @@ export function AddTenantModal({ onClose, onSubmit, initialRoom }) {
   if (pass.length < 6) errors.push("รหัสผ่าน (อย่างน้อย 6 ตัวอักษร)");
   if (pass && pass !== pass2) errors.push("รหัสผ่านไม่ตรงกัน");
 
-  const submit = () => {
-    if (errors.length) return;
+  const submit = async () => {
+    if (errors.length || saving) return;
+    setSaving(true);
+    setSaveErr(null);
     const [y, m] = date.split("-").map(Number);
     const newId = "T" + (Math.max(0, ...tenants.map(t => parseInt(t.id.slice(1)) || 0)) + 1);
-    onSubmit({
-      id: newId, name: name.trim(), phone: phone.trim(), room,
-      sinceY: y, sinceM: m - 1, moveInDate: date,
-      username: username.trim() || room,
-      password: pass,
-      // Personal info & docs
-      email: email.trim(),
-      address: address.trim(),
-      idCardNumber: idCardNumber.trim(),
-      idCardImage,
-      emergencyName: emergencyName.trim(),
-      emergencyPhone: emergencyPhone.trim(),
-      // Initial meter readings
-      initElec: initElec !== "" ? +initElec : null,
-      initWater: initWater !== "" ? +initWater : null,
-    });
+    try {
+      const res = await onSubmit({
+        id: newId, name: name.trim(), phone: phone.trim(), room,
+        sinceY: y, sinceM: m - 1, moveInDate: date,
+        username: username.trim() || room,
+        password: pass,
+        // Personal info & docs
+        email: email.trim(),
+        address: address.trim(),
+        idCardNumber: idCardNumber.trim(),
+        idCardImage,
+        emergencyName: emergencyName.trim(),
+        emergencyPhone: emergencyPhone.trim(),
+        // Initial meter readings
+        initElec: initElec !== "" ? +initElec : null,
+        initWater: initWater !== "" ? +initWater : null,
+      });
+      if (res?.ok === false) {
+        setSaveErr(res.msg || "บันทึกไม่สำเร็จ กรุณาลองใหม่");
+        setSaving(false);
+        return;
+      }
+    } catch (e) {
+      setSaveErr("เกิดข้อผิดพลาด กรุณาลองใหม่");
+      setSaving(false);
+      return;
+    }
+    setSaving(false);
   };
 
   return (
@@ -443,20 +459,31 @@ export function AddTenantModal({ onClose, onSubmit, initialRoom }) {
       </div>
 
       <div style={{ padding: "14px 24px 18px", borderTop: "1px solid var(--line)", background: "var(--surface-2)",
-        display: "flex", alignItems: "center", gap: 12, borderRadius: "0 0 20px 20px" }}>
-        <div style={{ flex: 1, fontSize: 11.5, color: errors.length ? "var(--warn)" : "var(--ink-3)" }}>
-          {errors.length ? `ต้องกรอก: ${errors.join(", ")}` : "พร้อมบันทึก — ผู้เช่าจะได้รับ SMS แจ้งรหัสล็อกอิน"}
+        display: "flex", flexDirection: "column", gap: 10, borderRadius: "0 0 20px 20px" }}>
+        {saveErr && (
+          <div style={{ background: "var(--danger-soft,#fff0f0)", border: "1px solid var(--danger,#e53935)",
+            borderRadius: 10, padding: "8px 12px", fontSize: 12.5, color: "var(--danger,#e53935)", fontWeight: 600,
+            display: "flex", alignItems: "center", gap: 6 }}>
+            ⚠️ {saveErr}
+          </div>
+        )}
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ flex: 1, fontSize: 11.5, color: errors.length ? "var(--warn)" : saving ? "var(--ink-3)" : saveErr ? "var(--danger,#e53935)" : "var(--ink-3)" }}>
+            {errors.length ? `ต้องกรอก: ${errors.join(", ")}` : saving ? "กำลังบันทึก..." : "พร้อมบันทึก — ผู้เช่าจะได้รับ SMS แจ้งรหัสล็อกอิน"}
+          </div>
+          <button onClick={onClose} style={{ ...detailBtn("ghost"), padding: "10px 16px" }}>ยกเลิก</button>
+          <button onClick={submit} disabled={errors.length > 0 || saving} style={{
+            padding: "10px 18px", borderRadius: 11,
+            background: (errors.length || saving) ? "var(--surface)" : "var(--brand)",
+            color: (errors.length || saving) ? "var(--ink-4)" : "white",
+            fontWeight: 700, fontSize: 13.5, cursor: (errors.length || saving) ? "not-allowed" : "pointer",
+            display: "flex", alignItems: "center", gap: 6,
+            border: (errors.length || saving) ? "1px solid var(--line)" : "none",
+          }}>
+            <IconCheck size={15} stroke={(errors.length || saving) ? "var(--ink-4)" : "white"}/>
+            {saving ? "กำลังบันทึก..." : "บันทึกผู้เช่าใหม่"}
+          </button>
         </div>
-        <button onClick={onClose} style={{ ...detailBtn("ghost"), padding: "10px 16px" }}>ยกเลิก</button>
-        <button onClick={submit} disabled={errors.length > 0} style={{
-          padding: "10px 18px", borderRadius: 11,
-          background: errors.length ? "var(--surface)" : "var(--brand)", color: errors.length ? "var(--ink-4)" : "white",
-          fontWeight: 700, fontSize: 13.5, cursor: errors.length ? "not-allowed" : "pointer",
-          display: "flex", alignItems: "center", gap: 6,
-          border: errors.length ? "1px solid var(--line)" : "none",
-        }}>
-          <IconCheck size={15} stroke={errors.length ? "var(--ink-4)" : "white"}/> บันทึกผู้เช่าใหม่
-        </button>
       </div>
     </ModalShell>
   );
@@ -1201,6 +1228,25 @@ export function SettingsModal({ onClose }) {
   const [waterRate, setWaterRate] = useState(owner.waterRate ?? UTIL_RATE.water);
 
   const [savedFlash, setSavedFlash] = useState(null);
+
+  // Sync local field state whenever the global `owner` context changes
+  // (e.g. after factory reset — owner becomes BLANK_OWNER, so the form should clear too)
+  useEffect(() => {
+    setName(owner.name);
+    setDisplayName(owner.displayName);
+    setDorm(owner.dorm);
+    setAddress(owner.address);
+    setPhone(owner.phone);
+    setEmail(owner.email);
+    setNumFloors(owner.numFloors ?? 5);
+    setRoomTypes(owner.roomTypes ?? ["เดี่ยว","คู่","สตูดิโอ"]);
+    setAmenityOpts(owner.amenityOpts ?? AMENITY_OPTS);
+    setDueDay(owner.dueDay ?? 5);
+    setBillDay(owner.billDay ?? 25);
+    setElecRate(owner.elecRate ?? UTIL_RATE.electric);
+    setWaterRate(owner.waterRate ?? UTIL_RATE.water);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [owner]);
 
   // ─── Unified account management state ───
   const [acctEditId,   setAcctEditId]   = useState(null);

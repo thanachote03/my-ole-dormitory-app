@@ -2921,8 +2921,8 @@ function ModalActions({ onClose, onSave, saving, disabled }) {
 // ─── ADD TENANT MODAL — bridge to faithful design ────────────────────────
 function AddTenantModal({ onClose, initialRoom }) {
   const { addTenant, saveInitialReading } = useData();
-  return <NewAddTenantModal onClose={onClose} initialRoom={initialRoom} onSubmit={(t) => {
-    addTenant({
+  return <NewAddTenantModal onClose={onClose} initialRoom={initialRoom} onSubmit={async (t) => {
+    const res = await addTenant({
       id: t.id, name: t.name, room_id: t.room, phone: t.phone,
       since_y: t.sinceY, since_m: t.sinceM,
       username: t.username, password: t.password,
@@ -2931,6 +2931,7 @@ function AddTenantModal({ onClose, initialRoom }) {
       idCardNumber: t.idCardNumber, idCardImage: t.idCardImage,
       emergencyName: t.emergencyName, emergencyPhone: t.emergencyPhone,
     });
+    if (res?.ok === false) return res; // pass error back to modal — modal stays open and shows error
     // Save initial meter reading (as baseline "seed" record for the move-in month)
     if (t.room && (t.initElec != null || t.initWater != null)) {
       saveInitialReading({
@@ -2942,6 +2943,7 @@ function AddTenantModal({ onClose, initialRoom }) {
       });
     }
     onClose();
+    return res;
   }}/>;
 }
 

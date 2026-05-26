@@ -133,8 +133,8 @@ export function OwnerMobile({ initialTab = "overview", staffRole = "admin", staf
 
       {addOpen && <AddTenantModal onClose={() => { setAddOpen(false); setAddTenantRoom(null); }}
         initialRoom={addTenantRoom}
-        onSubmit={(t) => {
-          addTenant({
+        onSubmit={async (t) => {
+          const res = await addTenant({
             id: t.id, name: t.name, room_id: t.room, phone: t.phone,
             since_y: t.sinceY, since_m: t.sinceM,
             username: t.username, password: t.password,
@@ -142,6 +142,7 @@ export function OwnerMobile({ initialTab = "overview", staffRole = "admin", staf
             idCardNumber: t.idCardNumber, idCardImage: t.idCardImage,
             emergencyName: t.emergencyName, emergencyPhone: t.emergencyPhone,
           });
+          if (res?.ok === false) return res; // pass error back to modal — modal stays open
           // Save initial meter reading if user provided one
           if (t.room && (t.initElec != null || t.initWater != null)) {
             saveInitialReading({
@@ -150,6 +151,7 @@ export function OwnerMobile({ initialTab = "overview", staffRole = "admin", staf
             });
           }
           setAddOpen(false); setAddTenantRoom(null);
+          return res;
         }}/>}
       {editingTenant && <EditTenantModal tenant={editingTenant}
         onClose={() => setEditId(null)}
