@@ -730,19 +730,57 @@ export function DataProvider({ children }) {
   const addStaff = useCallback(async ({ username, password, role = "admin", name = "" }) => {
     const id = "S" + Date.now();
     const row = { id, username: username.trim(), password, role, name };
+    // Optimistic: show immediately
     setStaff(prev => [...prev, row]);
-    try { await supabase.from("staff").insert(row); } catch {}
-    return row;
+    try {
+      const { error } = await supabase.from("staff").insert(row);
+      if (error) {
+        console.error("[addStaff] Supabase:", error.message || error);
+        // Revert — the row was never saved to the DB
+        setStaff(prev => prev.filter(s => s.id !== id));
+        return { ok: false, msg: error.message || "เพิ่มบัญชีไม่สำเร็จ" };
+      }
+    } catch (e) {
+      console.error("[addStaff] network:", e?.message || e);
+      setStaff(prev => prev.filter(s => s.id !== id));
+      return { ok: false, msg: "เชื่อมต่อฐานข้อมูลไม่สำเร็จ" };
+    }
+    return { ok: true, row };
   }, []);
 
   const updateStaff = useCallback(async (id, patch) => {
+    // Read original BEFORE the optimistic update (staff is in deps so this is current)
+    const original = staff.find(s => s.id === id) ?? null;
     setStaff(prev => prev.map(s => s.id === id ? { ...s, ...patch } : s));
-    try { await supabase.from("staff").update(patch).eq("id", id); } catch {}
-  }, []);
+    try {
+      const { error } = await supabase.from("staff").update(patch).eq("id", id);
+      if (error) {
+        console.error("[updateStaff] Supabase:", error.message || error);
+        // Rollback optimistic update
+        if (original) setStaff(prev => prev.map(s => s.id === id ? original : s));
+        return { ok: false, msg: error.message || "บันทึกไม่สำเร็จ" };
+      }
+    } catch (e) {
+      console.error("[updateStaff] network:", e?.message || e);
+      if (original) setStaff(prev => prev.map(s => s.id === id ? original : s));
+      return { ok: false, msg: "เชื่อมต่อฐานข้อมูลไม่สำเร็จ" };
+    }
+    return { ok: true };
+  }, [staff]); // staff in deps so we can read current values for rollback
 
   const deleteStaff = useCallback(async (id) => {
     setStaff(prev => prev.filter(s => s.id !== id));
-    try { await supabase.from("staff").delete().eq("id", id); } catch {}
+    try {
+      const { error } = await supabase.from("staff").delete().eq("id", id);
+      if (error) {
+        console.error("[deleteStaff] Supabase:", error.message || error);
+        return { ok: false, msg: error.message || "ลบบัญชีไม่สำเร็จ" };
+      }
+    } catch (e) {
+      console.error("[deleteStaff] network:", e?.message || e);
+      return { ok: false, msg: "เชื่อมต่อฐานข้อมูลไม่สำเร็จ" };
+    }
+    return { ok: true };
   }, []);
 
   // ─── Reset: wipe ALL data (rooms, profile, everything) back to blank ───

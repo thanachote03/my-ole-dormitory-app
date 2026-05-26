@@ -1216,7 +1216,11 @@ export function SettingsModal({ onClose }) {
     if (acctEditId) {
       const original = staff.find(s => s.id === acctEditId);
       // Update staff table (handles DB + state for all fields)
-      await updateStaff(acctEditId, { username: u, password: acctForm.password, role: acctForm.role, name: acctForm.name });
+      const res = await updateStaff(acctEditId, { username: u, password: acctForm.password, role: acctForm.role, name: acctForm.name });
+      if (res?.ok === false) {
+        setSavedFlash({ kind: "error", msg: `บันทึกไม่สำเร็จ — ${res.msg}` });
+        return;
+      }
       // If this is the owner's primary account, also sync config keys
       if (original?.username.toLowerCase() === (ownerUsername || "admin").toLowerCase()) {
         if (u !== original.username) await updateOwnerUsername(u);
@@ -1225,7 +1229,11 @@ export function SettingsModal({ onClose }) {
       setSavedFlash({ kind: "ok", msg: "บันทึกแล้ว ✓" });
       setAcctEditId(null);
     } else {
-      await addStaff({ username: u, password: acctForm.password, role: acctForm.role, name: acctForm.name });
+      const res = await addStaff({ username: u, password: acctForm.password, role: acctForm.role, name: acctForm.name });
+      if (res?.ok === false) {
+        setSavedFlash({ kind: "error", msg: `เพิ่มบัญชีไม่สำเร็จ — ${res.msg}` });
+        return;
+      }
       setSavedFlash({ kind: "ok", msg: `เพิ่มบัญชี "@${u}" เรียบร้อย` });
       setAcctAdding(false);
     }
