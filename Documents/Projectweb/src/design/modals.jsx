@@ -5,6 +5,19 @@ import { DI, amenityIcon } from "./icons";
 import { MONTHS_TH, MONTHS_FULL, AMENITY_OPTS, CUR_Y, CUR_M, dl, baht, UTIL_RATE } from "./seed";
 import { useData } from "./DataContext";
 
+// Effective payment status, deciding "ปกติ" vs "รอชำระ" by comparing today
+// against the configured due day of the month (owner.dueDay, default 5).
+// - paid record               → "ชำระแล้ว"
+// - unpaid AND past due date  → "รอชำระ"
+// - unpaid AND before due date → "ปกติ"
+export function paymentStatus(p, owner) {
+  if (p?.status === "ชำระแล้ว") return "ชำระแล้ว";
+  const dueDay = owner?.dueDay ?? 5;
+  // Due date is end-of-day on the dueDay so the whole day counts as on-time
+  const due = new Date(p.year, p.month, dueDay, 23, 59, 59).getTime();
+  return Date.now() > due ? "รอชำระ" : "ปกติ";
+}
+
 const {
   IconUsers, IconBuilding, IconLock, IconBell, IconSparkle, IconUser,
   IconCal, IconCard, IconWrench, IconSettings, IconDownload, IconFilter,
@@ -1086,7 +1099,7 @@ export function RoomDetailModal({ roomId, onClose, onMove, onTenant, onAddTenant
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
           <MiniStat2 label="ค่าเช่า/เดือน" value={baht(room.price)} tone="brand"/>
-          <MiniStat2 label="ค้างชำระ" value={pays.filter(p => p.status === "รอชำระ").length} tone="warn"/>
+          <MiniStat2 label="ค้างชำระ" value={pays.filter(p => paymentStatus(p, owner) === "รอชำระ").length} tone="warn"/>
           <MiniStat2 label="ซ่อมค้าง" value={roomRepairs.filter(r => r.status !== "เสร็จแล้ว").length} tone="lilac"/>
         </div>
 
@@ -1127,17 +1140,18 @@ export function RoomDetailModal({ roomId, onClose, onMove, onTenant, onAddTenant
               {pays.length === 0 ? (
                 <div style={{ fontSize: 12, color: "var(--ink-4)", textAlign: "center", padding: 12 }}>—</div>
               ) : pays.map(p => {
-                const paid = p.status === "ชำระแล้ว";
+                const st = paymentStatus(p, owner);
+                const tone =
+                  st === "ชำระแล้ว" ? { bg: "var(--ok-soft)",    fg: "var(--ok)",    icon: "✓",  label: "ชำระแล้ว" } :
+                  st === "รอชำระ"   ? { bg: "var(--warn-soft)",  fg: "var(--warn)",  icon: "⏳", label: "รอชำระ"   } :
+                                       { bg: "var(--info-soft)",  fg: "var(--info)",  icon: "•",  label: "ปกติ"     };
                 return (
                   <div key={p.id} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0",
                     borderBottom: "1px solid var(--line)", fontSize: 12 }}>
                     <span style={{ color: "var(--ink-2)" }}>{dl(p.year, p.month)}</span>
-                    <span style={{
-                      background: paid ? "var(--ok-soft)" : "var(--warn-soft)",
-                      color: paid ? "var(--ok)" : "var(--warn)",
-                      padding: "2px 9px", borderRadius: 100, fontSize: 11, fontWeight: 700,
-                    }}>
-                      {paid ? "✓ ชำระแล้ว" : "⏳ รอชำระ"}
+                    <span style={{ background: tone.bg, color: tone.fg,
+                      padding: "2px 9px", borderRadius: 100, fontSize: 11, fontWeight: 700 }}>
+                      {tone.icon} {tone.label}
                     </span>
                   </div>
                 );

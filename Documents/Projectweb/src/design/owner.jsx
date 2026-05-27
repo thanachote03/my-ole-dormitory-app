@@ -16,6 +16,7 @@ import {
   downloadCsv,
   ReceiptModal,
   FlatRateModal,
+  paymentStatus,
 } from "./modals";
 
 const {
@@ -875,7 +876,7 @@ function TenantsPage({ initial }) {
 }
 
 function TenantDetail({ tenant }) {
-  const { rooms, payments, recordPayment, updateTenant, deleteTenant, evictTenant, reactivateTenant, computePaymentTotal, curY, curM } = useData();
+  const { rooms, payments, owner, recordPayment, updateTenant, deleteTenant, evictTenant, reactivateTenant, computePaymentTotal, curY, curM } = useData();
   // Helper: compute total bill (rent + electricity + water) for a payment row
   const payTotal = (p) => {
     const b = computePaymentTotal ? computePaymentTotal(p.room_id, p.year, p.month) : null;
@@ -1196,6 +1197,11 @@ function TenantDetail({ tenant }) {
             )}
             {pays.map((p, i) => {
               const paid = p.status === "ชำระแล้ว";
+              const st = paymentStatus(p, owner);  // "ชำระแล้ว" / "รอชำระ" / "ปกติ"
+              const stTone =
+                st === "ชำระแล้ว" ? { bg: "var(--ok-soft)",   fg: "var(--ok)",   icon: "✓",  label: "ชำระแล้ว" } :
+                st === "รอชำระ"   ? { bg: "var(--warn-soft)", fg: "var(--warn)", icon: "⏳", label: "รอชำระ"   } :
+                                     { bg: "var(--info-soft)", fg: "var(--info)", icon: "•",  label: "ปกติ"     };
               const b = computePaymentTotal ? computePaymentTotal(p.room_id, p.year, p.month) : null;
               const total = b ? b.total : p.amount;
               const hasUtil = b && (b.elec > 0 || b.water > 0);
@@ -1212,9 +1218,10 @@ function TenantDetail({ tenant }) {
                       </div>
                     )}
                   </span>
-                  <span><span style={{ background: paid ? "var(--ok-soft)" : "var(--warn-soft)",
-                    color: paid ? "var(--ok)" : "var(--warn)", fontSize: 11, fontWeight: 700,
-                    padding: "3px 10px", borderRadius: 100 }}>{paid ? "✓ ชำระแล้ว" : "⏳ รอชำระ"}</span></span>
+                  <span><span style={{ background: stTone.bg, color: stTone.fg,
+                    fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 100 }}>
+                    {stTone.icon} {stTone.label}
+                  </span></span>
                   <span className="num" style={{ color: "var(--ink-3)" }}>{p.paid_at || "—"}</span>
                   <span style={{ textAlign: "right" }}>
                     {paid ? (
