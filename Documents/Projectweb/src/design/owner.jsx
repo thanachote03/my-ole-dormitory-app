@@ -895,49 +895,38 @@ function TenantDetail({ tenant }) {
   const endY = isEvicted ? +tenant.evictedY : curY;
   const endM = isEvicted ? +tenant.evictedM : curM;
 
-  // Build payment timeline across ALL tenancy periods this tenant has had
-  // (current room + every snapshot in localStorage from prior moves/evictions).
-  // Per req 1.5: a moved tenant should still see payments from their previous room.
+  // Build payment timeline for the CURRENT tenancy only (current room from
+  // sinceY/M to end). Historical tenancies live in the dedicated
+  // "ประวัติก่อนหน้า" tab — mixing them in here caused duplicate rows for the
+  // move-month and conflicted with the "เข้าพัก" date in the header.
   const pays = (() => {
     if (!roomId || tenant.sinceY == null || tenant.sinceM == null) {
       return payments
         .filter(p => p.room_id === roomId)
         .sort((a,b) => b.year !== a.year ? b.year - a.year : b.month - a.month).slice(0, 12);
     }
-    // Each period: { roomId, sinceY, sinceM, endY, endM }
-    const periods = [
-      ...tenancyHistory.map(h => ({
-        roomId: h.roomId,
-        sinceY: +h.sinceY, sinceM: +h.sinceM,
-        endY: +h.evictedY, endM: +h.evictedM,
-      })),
-      { roomId, sinceY: +tenant.sinceY, sinceM: +tenant.sinceM, endY, endM },
-    ];
+    const existing = payments.filter(p => {
+      if (p.room_id !== roomId) return false;
+      const afterStart = p.year > +tenant.sinceY || (p.year === +tenant.sinceY && p.month >= +tenant.sinceM);
+      const beforeEnd  = p.year < endY || (p.year === endY && p.month <= endM);
+      return afterStart && beforeEnd;
+    });
+    const byKey = new Map(existing.map(p => [`${p.year}|${p.month}`, p]));
     const out = [];
+    let y = +tenant.sinceY, m = +tenant.sinceM;
     let virtualId = -1;
-    for (const p of periods) {
-      const priceForPeriod = rooms.find(r => r.id === p.roomId)?.price ?? room?.price ?? 0;
-      const existing = payments.filter(pp => {
-        if (pp.room_id !== p.roomId) return false;
-        const afterStart = pp.year > p.sinceY || (pp.year === p.sinceY && pp.month >= p.sinceM);
-        const beforeEnd  = pp.year < p.endY   || (pp.year === p.endY   && pp.month <= p.endM);
-        return afterStart && beforeEnd;
+    while (y < endY || (y === endY && m <= endM)) {
+      const key = `${y}|${m}`;
+      const hit = byKey.get(key);
+      out.push(hit ?? {
+        id: `virt-${virtualId--}`,
+        room_id: roomId, year: y, month: m,
+        amount: room?.price || 0, status: "รอชำระ", paid_at: null,
+        _virtual: true,
       });
-      const byKey = new Map(existing.map(pp => [`${pp.year}|${pp.month}`, pp]));
-      let y = p.sinceY, m = p.sinceM;
-      while (y < p.endY || (y === p.endY && m <= p.endM)) {
-        const key = `${y}|${m}`;
-        const hit = byKey.get(key);
-        out.push(hit ?? {
-          id: `virt-${virtualId--}`,
-          room_id: p.roomId, year: y, month: m,
-          amount: priceForPeriod, status: "รอชำระ", paid_at: null,
-          _virtual: true,
-        });
-        m++; if (m > 11) { m = 0; y++; }
-      }
+      m++; if (m > 11) { m = 0; y++; }
     }
-    return out.sort((a,b) => b.year !== a.year ? b.year - a.year : b.month - a.month).slice(0, 24);
+    return out.sort((a,b) => b.year !== a.year ? b.year - a.year : b.month - a.month).slice(0, 12);
   })();
 
   return (
