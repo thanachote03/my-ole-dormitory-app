@@ -1,5 +1,5 @@
 // Desktop · Owner Dashboard
-import { useState, useEffect, Fragment } from "react";
+import { useState, useEffect, useMemo, Fragment } from "react";
 import { DI, amenityIcon } from "./icons";
 import { MONTHS_TH, MONTHS_FULL, dl, dld, baht } from "./seed";
 import { useData } from "./DataContext";
@@ -878,11 +878,13 @@ function TenantDetail({ tenant }) {
   const [reactivateSinceY, setReactivateSinceY] = useState(curY);
   const [reactivateSinceM, setReactivateSinceM] = useState(curM);
 
-  // Load all previous tenancy periods from localStorage
-  const [tenancyHistory] = useState(() => {
+  // Load all previous tenancy periods from localStorage — re-reads whenever the
+  // selected tenant changes (useState initializer only runs once and made every
+  // tenant inherit the first-rendered tenant's history badge).
+  const tenancyHistory = useMemo(() => {
     try { return JSON.parse(localStorage.getItem(`baan_history_${tenant.id}`) || '[]'); }
     catch { return []; }
-  });
+  }, [tenant.id]);
 
   // For evicted tenants, use prevRoom to look up room info + payments
   const roomId = tenant.room || tenant.prevRoom;

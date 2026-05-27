@@ -674,15 +674,28 @@ export function DataProvider({ children }) {
   const updateTenant = useCallback(async (id, patch) => {
     setTenants(prev => prev.map(t => t.id === id ? { ...t, ...patch } : t));
     try {
-      // Send only legacy columns to Supabase; in-memory state keeps all fields.
-      const ALLOWED = ["name","room","room_id","phone","sinceY","sinceM","since_y","since_m","username","password","moveInDate"];
+      // Map camelCase JS fields → snake_case Supabase columns. Personal-info
+      // columns use quoted camelCase in the schema so they pass through as-is.
+      const ALLOWED = [
+        "name","room","room_id","phone","sinceY","sinceM","since_y","since_m",
+        "username","password","moveInDate",
+        "email","address","idCardNumber","idCardImage","emergencyName","emergencyPhone",
+      ];
       const dbPatch = Object.fromEntries(Object.entries(patch).filter(([k]) => ALLOWED.includes(k)));
-      // Map camelCase → snake_case for Supabase columns
       if ("sinceY" in dbPatch) { dbPatch.since_y = dbPatch.sinceY; delete dbPatch.sinceY; }
       if ("sinceM" in dbPatch) { dbPatch.since_m = dbPatch.sinceM; delete dbPatch.sinceM; }
-      if ("room"   in dbPatch) { dbPatch.room_id = dbPatch.room;   delete dbPatch.room;   }
-      if (Object.keys(dbPatch).length) await supabase.from("tenants").update(dbPatch).eq("id", id);
-    } catch {}
+      if ("room"   in dbPatch) {
+        // Empty string would violate the room_id FK constraint — convert to null.
+        dbPatch.room_id = dbPatch.room === "" ? null : dbPatch.room;
+        delete dbPatch.room;
+      }
+      if (Object.keys(dbPatch).length) {
+        const { error } = await supabase.from("tenants").update(dbPatch).eq("id", id);
+        if (error) console.error("[updateTenant] Supabase:", error.message || error);
+      }
+    } catch (e) {
+      console.error("[updateTenant] network:", e?.message || e);
+    }
   }, []);
 
   const updateRoom = useCallback(async (id, patch) => {
