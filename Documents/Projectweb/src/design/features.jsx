@@ -6,11 +6,18 @@ import { useData } from "./DataContext";
 
 // ─── Payment Due Reminder (mobile, top banner) ─────────────────────
 export function PaymentDueBanner({ payment, room, onPay, onDismiss }) {
+  const { owner } = useData();
   if (!payment || payment.status !== "รอชำระ") return null;
-  const dueDay = 5;
-  const today = new Date().getDate();
-  const daysLeft = dueDay - today;
-  const overdue = daysLeft < 0;
+  // Previously hardcoded dueDay=5 and only compared day-of-month — that broke
+  // when the payment month was different from "now" (e.g. May rent viewed
+  // late May with owner.dueDay=26 showed "เกินกำหนด 22 วัน" using day 5 as
+  // the reference, contradicting the main rent card on the same screen).
+  const dueDay = owner?.dueDay ?? 5;
+  const dueDate = new Date(payment.year, payment.month, dueDay);
+  const dayMs = 86400000;
+  const diffDays = Math.floor((dueDate.getTime() - Date.now()) / dayMs);
+  const overdue = diffDays < 0;
+  const daysLeft = Math.abs(diffDays);
 
   return (
     <div className="screen-in" style={{
@@ -30,7 +37,7 @@ export function PaymentDueBanner({ payment, room, onPay, onDismiss }) {
       </div>
       <div style={{ flex: 1, position: "relative" }}>
         <div style={{ fontSize: 13.5, fontWeight: 700, letterSpacing: -0.1 }}>
-          {overdue ? `เกินกำหนด ${Math.abs(daysLeft)} วันแล้ว!` : `ครบกำหนดอีก ${daysLeft} วัน`}
+          {overdue ? `เกินกำหนด ${daysLeft} วันแล้ว!` : `ครบกำหนดอีก ${daysLeft} วัน`}
         </div>
         <div style={{ fontSize: 11.5, opacity: 0.85, marginTop: 2 }}>
           ค่าเช่าห้อง {room.id} · {MONTHS_FULL[payment.month]} {payment.year} · ภายในวันที่ {dueDay} {MONTHS_TH[payment.month]}
