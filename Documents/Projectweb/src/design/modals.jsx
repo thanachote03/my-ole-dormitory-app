@@ -1126,16 +1126,22 @@ export function RoomDetailModal({ roomId, onClose, onMove, onTenant, onAddTenant
               <div style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-2)", marginBottom: 10 }}>ประวัติการชำระล่าสุด</div>
               {pays.length === 0 ? (
                 <div style={{ fontSize: 12, color: "var(--ink-4)", textAlign: "center", padding: 12 }}>—</div>
-              ) : pays.map(p => (
-                <div key={p.id} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0",
-                  borderBottom: "1px solid var(--line)", fontSize: 12 }}>
-                  <span style={{ color: "var(--ink-2)" }}>{dl(p.year, p.month)}</span>
-                  <span className="num" style={{ fontWeight: 600,
-                    color: p.status === "ชำระแล้ว" ? "var(--ok)" : "var(--warn)" }}>
-                    {p.status === "ชำระแล้ว" ? "✓ " : "⏳ "}{baht(p.amount)}
-                  </span>
-                </div>
-              ))}
+              ) : pays.map(p => {
+                const paid = p.status === "ชำระแล้ว";
+                return (
+                  <div key={p.id} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0",
+                    borderBottom: "1px solid var(--line)", fontSize: 12 }}>
+                    <span style={{ color: "var(--ink-2)" }}>{dl(p.year, p.month)}</span>
+                    <span style={{
+                      background: paid ? "var(--ok-soft)" : "var(--warn-soft)",
+                      color: paid ? "var(--ok)" : "var(--warn)",
+                      padding: "2px 9px", borderRadius: 100, fontSize: 11, fontWeight: 700,
+                    }}>
+                      {paid ? "✓ ชำระแล้ว" : "⏳ รอชำระ"}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           )}
           {occ && (
