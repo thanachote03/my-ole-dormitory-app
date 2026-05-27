@@ -15,6 +15,7 @@ import {
   Avatar as ModalAvatar,
   downloadCsv,
   ReceiptModal,
+  InvoiceModal,
   FlatRateModal,
   paymentStatus,
 } from "./modals";
@@ -886,6 +887,7 @@ function TenantDetail({ tenant }) {
   const [docTab, setDocTab] = useState("pays"); // "pays" | "room" | "docs" | "history"
   const [lightboxId, setLightboxId] = useState(false);
   const [receiptPay, setReceiptPay] = useState(null);
+  const [invoicePay, setInvoicePay] = useState(null);
   const [confirmPay, setConfirmPay] = useState(null);
   const [confirmEvict, setConfirmEvict] = useState(false);
   const [evictDay,   setEvictDay]   = useState(() => new Date().getDate());
@@ -1223,7 +1225,7 @@ function TenantDetail({ tenant }) {
                     {stTone.icon} {stTone.label}
                   </span></span>
                   <span className="num" style={{ color: "var(--ink-3)" }}>{p.paid_at || "—"}</span>
-                  <span style={{ textAlign: "right" }}>
+                  <span style={{ textAlign: "right", display: "inline-flex", alignItems: "center", gap: 4, justifyContent: "flex-end" }}>
                     {paid ? (
                       <button onClick={() => setReceiptPay(p)}
                         style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: 12,
@@ -1233,14 +1235,25 @@ function TenantDetail({ tenant }) {
                     ) : isEvicted ? (
                       <span style={{ fontSize: 11, color: "var(--ink-4)" }}>—</span>
                     ) : (
-                      <button
-                        onClick={() => setConfirmPay(confirmPay?.id === p.id ? null : p)}
-                        style={{ background: confirmPay?.id === p.id ? "var(--brand-soft)" : "transparent",
-                          border: confirmPay?.id === p.id ? "1px solid oklch(0.88 0.06 35)" : "none",
-                          borderRadius: 8, cursor: "pointer", fontSize: 12, color: "var(--brand)", fontWeight: 700,
-                          padding: "3px 8px", transition: "all .15s" }}>
-                        บันทึก →
-                      </button>
+                      <>
+                        {/* Invoice (ใบแจ้งยอด) — only meaningful AFTER due date */}
+                        {st === "รอชำระ" && (
+                          <button onClick={() => setInvoicePay(p)}
+                            title="ใบแจ้งยอดเรียกเก็บเงิน"
+                            style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: 12,
+                              color: "var(--warn)", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 3 }}>
+                            📄
+                          </button>
+                        )}
+                        <button
+                          onClick={() => setConfirmPay(confirmPay?.id === p.id ? null : p)}
+                          style={{ background: confirmPay?.id === p.id ? "var(--brand-soft)" : "transparent",
+                            border: confirmPay?.id === p.id ? "1px solid oklch(0.88 0.06 35)" : "none",
+                            borderRadius: 8, cursor: "pointer", fontSize: 12, color: "var(--brand)", fontWeight: 700,
+                            padding: "3px 8px", transition: "all .15s" }}>
+                          บันทึก →
+                        </button>
+                      </>
                     )}
                   </span>
                 </div>
@@ -1398,6 +1411,9 @@ function TenantDetail({ tenant }) {
 
       {/* Receipt modal */}
       {receiptPay && <ReceiptModal payment={receiptPay} onClose={() => setReceiptPay(null)}/>}
+
+      {/* Invoice modal — printable bill for overdue months */}
+      {invoicePay && <InvoiceModal payment={invoicePay} onClose={() => setInvoicePay(null)}/>}
 
       {/* ID card lightbox */}
       {lightboxId && tenant.idCardImage && (

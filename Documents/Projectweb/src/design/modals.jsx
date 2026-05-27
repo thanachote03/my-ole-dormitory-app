@@ -3088,6 +3088,241 @@ export function ReceiptModal({ payment, onClose }) {
   );
 }
 
+// ─── INVOICE MODAL (ใบแจ้งยอดเรียกเก็บเงิน) ───────────────────────────────
+// Shown for overdue / unpaid payments — gives the owner a printable
+// statement they can hand or send to the tenant.
+export function InvoiceModal({ payment, onClose }) {
+  const { tenants, rooms, utils, owner, banks, utilRate } = useData();
+  const tenant = tenants.find(t => t.room === payment.room_id) ||
+                 tenants.find(t => t.prevRoom === payment.room_id);
+  const room   = rooms.find(r => r.id === payment.room_id);
+  const util   = utils.find(u =>
+    u.room_id === payment.room_id && u.year === payment.year && u.month === payment.month && !u.isInitial
+  );
+
+  const invoiceNo = `INV-${payment.year}-${payment.room_id}-${String(payment.month + 1).padStart(2, "0")}`;
+  const elecAmt   = util?.elec_amount  || 0;
+  const waterAmt  = util?.water_amount || 0;
+  const grandTotal = (payment.amount || 0) + elecAmt + waterAmt;
+
+  const dueDay = owner?.dueDay ?? 5;
+  const dueDate = new Date(payment.year, payment.month, dueDay);
+  const daysOverdue = Math.max(0, Math.floor((Date.now() - dueDate.getTime()) / 86400000));
+  const issuedDate = new Date().toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" });
+  const dueLabel = dueDate.toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" });
+
+  const elecRate  = utilRate?.electric ?? 8;
+  const waterRate = utilRate?.water    ?? 18;
+  const elecDetail  = util ? `${util.elec_use} หน่วย × ฿${elecRate}` : "";
+  const waterDetail = util ? `${util.water_use} หน่วย × ฿${waterRate}` : "";
+
+  const lineItems = [
+    { label: `ค่าเช่าห้อง ${payment.room_id}${room ? ` (${room.type})` : ""}`, sub: "", amount: payment.amount || 0 },
+    elecAmt  > 0 && { label: "ค่าไฟฟ้า",   sub: elecDetail,  amount: elecAmt  },
+    waterAmt > 0 && { label: "ค่าน้ำประปา", sub: waterDetail, amount: waterAmt },
+  ].filter(Boolean);
+
+  // Bank channels for payment instructions
+  const primaryBank = banks?.find(b => b.primary) ?? banks?.[0];
+
+  const handlePrint = () => {
+    const rows = lineItems.map(it => `
+      <div class="item">
+        <div class="row"><span>${it.label}</span><span class="amt">${it.amount.toLocaleString()}</span></div>
+        ${it.sub ? `<div class="subrow">${it.sub}</div>` : ""}
+      </div>
+    `).join("");
+    const bankRows = (banks || []).map(b => `
+      <div class="bank">${b.short || b.bank || ""} · ${b.name || ""} · ${b.number || ""}</div>
+    `).join("");
+
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${invoiceNo}</title><style>
+      @page { size: A5; margin: 8mm }
+      *{box-sizing:border-box;margin:0;padding:0}
+      body{font-family:Sarabun,'TH Sarabun New',Arial,sans-serif;font-size:13px;color:#000;line-height:1.5;padding:6mm;position:relative}
+      h1{font-size:20px;font-weight:800;text-align:center;letter-spacing:-.3px}
+      .sub{text-align:center;color:#555;font-size:11px;margin-top:1mm}
+      .div{border-top:1px dashed #888;margin:3mm 0}
+      .row{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+      .meta{display:flex;justify-content:space-between;font-size:11px;margin:2mm 0}
+      .lbl{color:#666;font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.6px}
+      .val{font-weight:700;font-size:13px}
+      .party{margin:3mm 0;padding:2mm;background:#f7f7f5;border-radius:2mm}
+      .party .name{font-weight:700;font-size:14px}
+      .party .info{font-size:11px;color:#555;margin-top:.5mm}
+      .items{margin-top:3mm}
+      .items-hdr{font-size:10px;color:#666;font-weight:700;text-transform:uppercase;margin-bottom:2mm}
+      .item{padding:2mm 0;border-bottom:1px dotted #ccc}
+      .item .amt{font-weight:700;font-family:'Sarabun',monospace}
+      .subrow{font-size:11px;color:#777;margin-top:.5mm}
+      .total{display:flex;justify-content:space-between;padding:3mm;margin-top:2mm;background:#fff5e8;border:1.5px solid #f0c478;border-radius:2mm}
+      .total .lbl-t{font-weight:800;font-size:14px}
+      .total .val-t{font-weight:900;font-size:20px;color:#d97506;font-family:'Sarabun',monospace}
+      .due{margin-top:3mm;padding:2.5mm;background:#fef1f1;border:1.5px solid #f4a3a3;border-radius:2mm;color:#922}
+      .due .due-lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px}
+      .due .due-val{font-weight:800;font-size:13px;margin-top:1mm}
+      .banks{margin-top:3mm;padding:2mm;background:#f7f9fc;border:1px solid #d8dde6;border-radius:2mm}
+      .banks-hdr{font-size:10px;color:#445;font-weight:700;text-transform:uppercase;margin-bottom:1.5mm}
+      .bank{font-size:11.5px;padding:1mm 0;color:#223}
+      .sigwrap{margin-top:7mm;display:flex;justify-content:space-around;font-size:10.5px;color:#666}
+      .sigline{border-top:1px solid #888;width:50mm;padding-top:1mm;text-align:center}
+      .stamp{position:absolute;top:42%;right:18mm;transform:rotate(-12deg);
+        border:3px double #c53030;border-radius:3mm;padding:3mm 6mm;
+        color:#c53030;font-size:18px;font-weight:900;letter-spacing:1px;
+        opacity:0.75;pointer-events:none}
+    </style></head><body>
+      ${daysOverdue > 0 ? `<div class="stamp">เกินกำหนด ${daysOverdue} วัน</div>` : ""}
+      <h1>${owner?.dorm || "หอพัก"}</h1>
+      <div class="sub">ใบแจ้งยอดเรียกเก็บเงิน · Invoice</div>
+      <div class="div"></div>
+      <div class="meta">
+        <div><span class="lbl">เลขที่</span><div class="val">${invoiceNo}</div></div>
+        <div style="text-align:right"><span class="lbl">วันที่ออก</span><div class="val">${issuedDate}</div></div>
+      </div>
+      <div class="party"><span class="lbl">ผู้เช่า</span>
+        <div class="name">${tenant?.name || "—"}</div>
+        <div class="info">ห้อง ${payment.room_id}${tenant?.phone ? " · " + tenant.phone : ""}</div>
+      </div>
+      <div class="items">
+        <div class="items-hdr">รายการ · งวด ${MONTHS_TH[payment.month]} ${payment.year}</div>
+        ${rows}
+      </div>
+      <div class="total"><span class="lbl-t">รวมทั้งสิ้น</span><span class="val-t">${grandTotal.toLocaleString()} บาท</span></div>
+      <div class="due">
+        <span class="due-lbl">กำหนดชำระภายใน</span>
+        <div class="due-val">${dueLabel}${daysOverdue > 0 ? " (เกินกำหนดแล้ว " + daysOverdue + " วัน)" : ""}</div>
+      </div>
+      ${bankRows ? `<div class="banks"><div class="banks-hdr">ช่องทางชำระเงิน</div>${bankRows}</div>` : ""}
+      <div class="sigwrap">
+        <div class="sigline">ลายมือชื่อผู้รับเงิน</div>
+        <div class="sigline">ลายมือชื่อผู้เช่า</div>
+      </div>
+    </body></html>`;
+    const win = window.open("", "_blank");
+    if (!win) return;
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    setTimeout(() => { win.print(); }, 400);
+  };
+
+  return (
+    <ModalShell onClose={onClose} width={560}>
+      <div style={{ padding: "18px 22px", borderBottom: "1px solid var(--line)",
+        display: "flex", alignItems: "center", gap: 12 }}>
+        <div style={{ width: 50, height: 50, borderRadius: 13,
+          background: "oklch(0.94 0.06 35)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24 }}>
+          📄
+        </div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 17, fontWeight: 700 }}>ใบแจ้งยอดเรียกเก็บเงิน</div>
+          <div style={{ fontFamily: "monospace", fontSize: 12, color: "var(--ink-3)", marginTop: 2 }}>{invoiceNo}</div>
+        </div>
+        <button onClick={handlePrint} style={{ padding: "9px 16px", borderRadius: 11, border: "none",
+          background: "var(--ink)", color: "white", fontWeight: 700, fontSize: 13, cursor: "pointer",
+          display: "flex", alignItems: "center", gap: 6 }}>
+          🖨 พิมพ์
+        </button>
+        <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 10,
+          background: "var(--surface-2)", border: "1px solid var(--line)", cursor: "pointer",
+          display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <IconX size={15} stroke="var(--ink-3)"/>
+        </button>
+      </div>
+
+      <div style={{ padding: "20px 22px", position: "relative" }}>
+        {daysOverdue > 0 && (
+          <div style={{
+            position: "absolute", top: "44%", right: 30, transform: "rotate(-12deg)",
+            border: "3px double var(--danger)", borderRadius: 10,
+            padding: "8px 18px", color: "var(--danger)",
+            fontSize: 16, fontWeight: 900, letterSpacing: 1.5,
+            background: "rgba(255,255,255,0.55)", opacity: 0.8,
+            pointerEvents: "none", zIndex: 1, textAlign: "center", lineHeight: 1.1,
+          }}>
+            ⚠ เกินกำหนด {daysOverdue} วัน
+          </div>
+        )}
+
+        <div style={{ textAlign: "center", marginBottom: 16 }}>
+          <div style={{ fontSize: 19, fontWeight: 800, letterSpacing: -0.3 }}>{owner?.dorm || "หอพัก"}</div>
+          <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 2 }}>ใบแจ้งยอดเรียกเก็บเงิน · Invoice</div>
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "space-between",
+          padding: "10px 0", borderTop: "1.5px dashed var(--line-2)", borderBottom: "1.5px dashed var(--line-2)", marginBottom: 14 }}>
+          <div>
+            <div style={{ fontSize: 10.5, color: "var(--ink-3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.8 }}>เลขที่ใบแจ้งยอด</div>
+            <div style={{ fontFamily: "monospace", fontSize: 13, fontWeight: 700, color: "var(--ink)", marginTop: 2 }}>{invoiceNo}</div>
+          </div>
+          <div style={{ textAlign: "right" }}>
+            <div style={{ fontSize: 10.5, color: "var(--ink-3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.8 }}>วันที่ออก</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)", marginTop: 2 }}>{issuedDate}</div>
+          </div>
+        </div>
+
+        <div style={{ background: "var(--surface-2)", borderRadius: 12, padding: "11px 14px", marginBottom: 14 }}>
+          <div style={{ fontSize: 10.5, color: "var(--ink-3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 6 }}>ผู้เช่า</div>
+          <div style={{ fontSize: 14, fontWeight: 700 }}>{tenant?.name || "—"}</div>
+          <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 3 }}>
+            ห้อง {payment.room_id}{tenant?.phone ? " · " + tenant.phone : ""}
+          </div>
+        </div>
+
+        <div style={{ fontSize: 10.5, color: "var(--ink-3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 6 }}>
+          รายการ · งวด {dl(payment.year, payment.month)}
+        </div>
+        <div style={{ background: "var(--surface-2)", borderRadius: 12, overflow: "hidden", border: "1px solid var(--line)", marginBottom: 12 }}>
+          {lineItems.map((item, i) => (
+            <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
+              padding: "11px 14px", borderBottom: i < lineItems.length - 1 ? "1px solid var(--line)" : "none",
+              background: "var(--surface)", fontSize: 13 }}>
+              <div>
+                <div>{item.label}</div>
+                {item.sub && <div className="num" style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 2 }}>{item.sub}</div>}
+              </div>
+              <span className="num" style={{ fontWeight: 700 }}>{baht(item.amount)}</span>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
+          padding: "13px 16px", background: "var(--brand-soft)", borderRadius: 12,
+          border: "1px solid oklch(0.88 0.06 35)", marginBottom: 12 }}>
+          <span style={{ fontSize: 14, fontWeight: 700, color: "var(--brand-ink)" }}>รวมทั้งสิ้น</span>
+          <span className="num" style={{ fontSize: 22, fontWeight: 800, color: "var(--brand-ink)", letterSpacing: -0.5 }}>{baht(grandTotal)}</span>
+        </div>
+
+        <div style={{ padding: "11px 14px", background: daysOverdue > 0 ? "var(--danger-soft)" : "var(--info-soft)",
+          border: `1px solid ${daysOverdue > 0 ? "var(--danger)" : "var(--info)"}`, borderRadius: 12, marginBottom: 12 }}>
+          <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.8,
+            color: daysOverdue > 0 ? "var(--danger)" : "var(--info)" }}>กำหนดชำระภายใน</div>
+          <div style={{ fontSize: 14, fontWeight: 800, marginTop: 3,
+            color: daysOverdue > 0 ? "var(--danger)" : "var(--ink)" }}>
+            {dueLabel}{daysOverdue > 0 && <span style={{ fontWeight: 600 }}> · เกินกำหนด {daysOverdue} วัน</span>}
+          </div>
+        </div>
+
+        {(banks?.length || 0) > 0 && (
+          <div style={{ padding: "11px 14px", background: "var(--surface-2)", border: "1px solid var(--line)",
+            borderRadius: 12, marginBottom: 4 }}>
+            <div style={{ fontSize: 10.5, color: "var(--ink-3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 6 }}>
+              ช่องทางชำระเงิน
+            </div>
+            {banks.map(b => (
+              <div key={b.id} style={{ fontSize: 12, color: "var(--ink-2)", padding: "3px 0",
+                fontWeight: b.id === primaryBank?.id ? 700 : 500 }}>
+                <span className="num">{b.short || b.bank}</span> · {b.name} · <span className="num">{b.number}</span>
+                {b.id === primaryBank?.id && <span style={{ fontSize: 10, color: "var(--brand)", marginLeft: 6 }}>★ หลัก</span>}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </ModalShell>
+  );
+}
+
 // ─── FLAT RATE MODAL ─────────────────────────────────────────────────────
 export function FlatRateModal({ onClose }) {
   const { rooms, tenants, billing, setRoomBilling, curY, curM } = useData();
