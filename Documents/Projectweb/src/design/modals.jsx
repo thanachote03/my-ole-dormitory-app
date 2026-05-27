@@ -3333,7 +3333,7 @@ export function AddRoomModal({ onClose, onSubmit }) {
   const [floor, setFloor] = useState(1);
   const [number, setNumber] = useState("");
   const [type, setType] = useState(dynRoomTypes[0] ?? "เดี่ยว");
-  const [price, setPrice] = useState(3500);
+  const [price, setPrice] = useState(0);
   const [amenities, setAmenities] = useState(
     dynAmenityOpts.filter(a => ["แอร์","Wi-Fi"].includes(a)).slice(0, 2)
   );
