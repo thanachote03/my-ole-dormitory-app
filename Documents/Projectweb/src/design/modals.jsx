@@ -3092,7 +3092,10 @@ export function ReceiptModal({ payment, onClose }) {
 // Shown for overdue / unpaid payments — gives the owner a printable
 // statement they can hand or send to the tenant.
 export function InvoiceModal({ payment, onClose }) {
-  const { tenants, rooms, utils, owner, banks, utilRate } = useData();
+  // Minimal invoice — only owner/tenant/items/total. Due-date callout, bank
+  // channels, signature lines, and the overdue stamp were dropped per user
+  // request, so banks / dueDate / daysOverdue / primaryBank are no longer read.
+  const { tenants, rooms, utils, owner, utilRate } = useData();
   const tenant = tenants.find(t => t.room === payment.room_id) ||
                  tenants.find(t => t.prevRoom === payment.room_id);
   const room   = rooms.find(r => r.id === payment.room_id);
@@ -3105,12 +3108,7 @@ export function InvoiceModal({ payment, onClose }) {
   const waterAmt  = util?.water_amount || 0;
   const grandTotal = (payment.amount || 0) + elecAmt + waterAmt;
 
-  const dueDay = owner?.dueDay ?? 5;
-  const dueDate = new Date(payment.year, payment.month, dueDay);
-  const daysOverdue = Math.max(0, Math.floor((Date.now() - dueDate.getTime()) / 86400000));
   const issuedDate = new Date().toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" });
-  const dueLabel = dueDate.toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" });
-
   const elecRate  = utilRate?.electric ?? 8;
   const waterRate = utilRate?.water    ?? 18;
   const elecDetail  = util ? `${util.elec_use} หน่วย × ฿${elecRate}` : "";
@@ -3122,9 +3120,6 @@ export function InvoiceModal({ payment, onClose }) {
     waterAmt > 0 && { label: "ค่าน้ำประปา", sub: waterDetail, amount: waterAmt },
   ].filter(Boolean);
 
-  // Bank channels for payment instructions
-  const primaryBank = banks?.find(b => b.primary) ?? banks?.[0];
-
   const handlePrint = () => {
     const rows = lineItems.map(it => `
       <div class="item">
@@ -3132,14 +3127,14 @@ export function InvoiceModal({ payment, onClose }) {
         ${it.sub ? `<div class="subrow">${it.sub}</div>` : ""}
       </div>
     `).join("");
-    const bankRows = (banks || []).map(b => `
-      <div class="bank">${b.short || b.bank || ""} · ${b.name || ""} · ${b.number || ""}</div>
-    `).join("");
 
+    // Minimal print layout per user request — header, tenant, items, total.
+    // Dropped: overdue diagonal stamp, due-date callout, bank channels list,
+    // signature lines.
     const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${invoiceNo}</title><style>
       @page { size: A5; margin: 8mm }
       *{box-sizing:border-box;margin:0;padding:0}
-      body{font-family:Sarabun,'TH Sarabun New',Arial,sans-serif;font-size:13px;color:#000;line-height:1.5;padding:6mm;position:relative}
+      body{font-family:Sarabun,'TH Sarabun New',Arial,sans-serif;font-size:13px;color:#000;line-height:1.5;padding:6mm}
       h1{font-size:20px;font-weight:800;text-align:center;letter-spacing:-.3px}
       .sub{text-align:center;color:#555;font-size:11px;margin-top:1mm}
       .div{border-top:1px dashed #888;margin:3mm 0}
@@ -3158,20 +3153,7 @@ export function InvoiceModal({ payment, onClose }) {
       .total{display:flex;justify-content:space-between;padding:3mm;margin-top:2mm;background:#fff5e8;border:1.5px solid #f0c478;border-radius:2mm}
       .total .lbl-t{font-weight:800;font-size:14px}
       .total .val-t{font-weight:900;font-size:20px;color:#d97506;font-family:'Sarabun',monospace}
-      .due{margin-top:3mm;padding:2.5mm;background:#fef1f1;border:1.5px solid #f4a3a3;border-radius:2mm;color:#922}
-      .due .due-lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px}
-      .due .due-val{font-weight:800;font-size:13px;margin-top:1mm}
-      .banks{margin-top:3mm;padding:2mm;background:#f7f9fc;border:1px solid #d8dde6;border-radius:2mm}
-      .banks-hdr{font-size:10px;color:#445;font-weight:700;text-transform:uppercase;margin-bottom:1.5mm}
-      .bank{font-size:11.5px;padding:1mm 0;color:#223}
-      .sigwrap{margin-top:7mm;display:flex;justify-content:space-around;font-size:10.5px;color:#666}
-      .sigline{border-top:1px solid #888;width:50mm;padding-top:1mm;text-align:center}
-      .stamp{position:absolute;top:42%;right:18mm;transform:rotate(-12deg);
-        border:3px double #c53030;border-radius:3mm;padding:3mm 6mm;
-        color:#c53030;font-size:18px;font-weight:900;letter-spacing:1px;
-        opacity:0.75;pointer-events:none}
     </style></head><body>
-      ${daysOverdue > 0 ? `<div class="stamp">เกินกำหนด ${daysOverdue} วัน</div>` : ""}
       <h1>${owner?.dorm || "หอพัก"}</h1>
       <div class="sub">ใบแจ้งยอดเรียกเก็บเงิน · Invoice</div>
       <div class="div"></div>
@@ -3188,15 +3170,6 @@ export function InvoiceModal({ payment, onClose }) {
         ${rows}
       </div>
       <div class="total"><span class="lbl-t">รวมทั้งสิ้น</span><span class="val-t">${grandTotal.toLocaleString()} บาท</span></div>
-      <div class="due">
-        <span class="due-lbl">กำหนดชำระภายใน</span>
-        <div class="due-val">${dueLabel}${daysOverdue > 0 ? " (เกินกำหนดแล้ว " + daysOverdue + " วัน)" : ""}</div>
-      </div>
-      ${bankRows ? `<div class="banks"><div class="banks-hdr">ช่องทางชำระเงิน</div>${bankRows}</div>` : ""}
-      <div class="sigwrap">
-        <div class="sigline">ลายมือชื่อผู้รับเงิน</div>
-        <div class="sigline">ลายมือชื่อผู้เช่า</div>
-      </div>
     </body></html>`;
     const win = window.open("", "_blank");
     if (!win) return;
@@ -3230,20 +3203,7 @@ export function InvoiceModal({ payment, onClose }) {
         </button>
       </div>
 
-      <div style={{ padding: "20px 22px", position: "relative" }}>
-        {daysOverdue > 0 && (
-          <div style={{
-            position: "absolute", top: "44%", right: 30, transform: "rotate(-12deg)",
-            border: "3px double var(--danger)", borderRadius: 10,
-            padding: "8px 18px", color: "var(--danger)",
-            fontSize: 16, fontWeight: 900, letterSpacing: 1.5,
-            background: "rgba(255,255,255,0.55)", opacity: 0.8,
-            pointerEvents: "none", zIndex: 1, textAlign: "center", lineHeight: 1.1,
-          }}>
-            ⚠ เกินกำหนด {daysOverdue} วัน
-          </div>
-        )}
-
+      <div style={{ padding: "20px 22px" }}>
         <div style={{ textAlign: "center", marginBottom: 16 }}>
           <div style={{ fontSize: 19, fontWeight: 800, letterSpacing: -0.3 }}>{owner?.dorm || "หอพัก"}</div>
           <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 2 }}>ใบแจ้งยอดเรียกเก็บเงิน · Invoice</div>
@@ -3288,36 +3248,10 @@ export function InvoiceModal({ payment, onClose }) {
 
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
           padding: "13px 16px", background: "var(--brand-soft)", borderRadius: 12,
-          border: "1px solid oklch(0.88 0.06 35)", marginBottom: 12 }}>
+          border: "1px solid oklch(0.88 0.06 35)" }}>
           <span style={{ fontSize: 14, fontWeight: 700, color: "var(--brand-ink)" }}>รวมทั้งสิ้น</span>
           <span className="num" style={{ fontSize: 22, fontWeight: 800, color: "var(--brand-ink)", letterSpacing: -0.5 }}>{baht(grandTotal)}</span>
         </div>
-
-        <div style={{ padding: "11px 14px", background: daysOverdue > 0 ? "var(--danger-soft)" : "var(--info-soft)",
-          border: `1px solid ${daysOverdue > 0 ? "var(--danger)" : "var(--info)"}`, borderRadius: 12, marginBottom: 12 }}>
-          <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.8,
-            color: daysOverdue > 0 ? "var(--danger)" : "var(--info)" }}>กำหนดชำระภายใน</div>
-          <div style={{ fontSize: 14, fontWeight: 800, marginTop: 3,
-            color: daysOverdue > 0 ? "var(--danger)" : "var(--ink)" }}>
-            {dueLabel}{daysOverdue > 0 && <span style={{ fontWeight: 600 }}> · เกินกำหนด {daysOverdue} วัน</span>}
-          </div>
-        </div>
-
-        {(banks?.length || 0) > 0 && (
-          <div style={{ padding: "11px 14px", background: "var(--surface-2)", border: "1px solid var(--line)",
-            borderRadius: 12, marginBottom: 4 }}>
-            <div style={{ fontSize: 10.5, color: "var(--ink-3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 6 }}>
-              ช่องทางชำระเงิน
-            </div>
-            {banks.map(b => (
-              <div key={b.id} style={{ fontSize: 12, color: "var(--ink-2)", padding: "3px 0",
-                fontWeight: b.id === primaryBank?.id ? 700 : 500 }}>
-                <span className="num">{b.short || b.bank}</span> · {b.name} · <span className="num">{b.number}</span>
-                {b.id === primaryBank?.id && <span style={{ fontSize: 10, color: "var(--brand)", marginLeft: 6 }}>★ หลัก</span>}
-              </div>
-            ))}
-          </div>
-        )}
       </div>
     </ModalShell>
   );
