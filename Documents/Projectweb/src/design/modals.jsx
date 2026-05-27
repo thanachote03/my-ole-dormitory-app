@@ -120,7 +120,19 @@ export function AddTenantModal({ onClose, onSubmit, initialRoom }) {
   // Initial meter readings
   const [initElec, setInitElec] = useState("");
   const [initWater, setInitWater] = useState("");
-  const [meterOpen, setMeterOpen] = useState(false);
+  // Per req 3.1: meter section opens automatically when a room is picked so
+  // the user can't miss filling in the baseline readings.
+  const [meterOpen, setMeterOpen] = useState(!!initialRoom);
+  useEffect(() => { if (room) setMeterOpen(true); }, [room]);
+  // Pre-fill from the room's last meter values when a room is selected — the
+  // next tenant typically starts where the previous one left off.
+  useEffect(() => {
+    if (!room) return;
+    const r = rooms.find(x => x.id === room);
+    if (r?.lastElecMeter != null && initElec === "")  setInitElec(String(r.lastElecMeter));
+    if (r?.lastWaterMeter != null && initWater === "") setInitWater(String(r.lastWaterMeter));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [room]);
   const [saving, setSaving] = useState(false);
   const [saveErr, setSaveErr] = useState(null);
 
@@ -147,6 +159,9 @@ export function AddTenantModal({ onClose, onSubmit, initialRoom }) {
   if (!date) errors.push("วันที่เข้าพัก");
   if (pass.length < 6) errors.push("รหัสผ่าน (อย่างน้อย 6 ตัวอักษร)");
   if (pass && pass !== pass2) errors.push("รหัสผ่านไม่ตรงกัน");
+  // Per req 3.1: when assigning a room, initial meter readings are required
+  // so the first billing cycle has a baseline to subtract from.
+  if (room && (initElec === "" || initWater === "")) errors.push("เลขมิเตอร์เริ่มต้น (น้ำ+ไฟ)");
 
   const submit = async () => {
     if (errors.length || saving) return;
@@ -731,12 +746,23 @@ export function EditTenantModal({ tenant, onClose, onSave, onDelete }) {
 
 // ─── ROOM DETAIL MODAL ───────────────────────────────────────────────────
 export function RoomDetailModal({ roomId, onClose, onMove, onTenant, onAddTenant }) {
-  const { rooms, tenants, payments, utils, repairs, updateRoom, deleteRoom, owner, reactivateTenant, curY, curM } = useData();
+  const { rooms, tenants, payments, utils, repairs, updateRoom, deleteRoom, owner, reactivateTenant, saveInitialReading, curY, curM } = useData();
   const dynRoomTypes   = owner?.roomTypes   ?? ["เดี่ยว","คู่","สตูดิโอ"];
   const dynAmenityOpts = owner?.amenityOpts ?? AMENITY_OPTS;
   const room = rooms.find(r => r.id === roomId);
   const [moveOpen, setMoveOpen] = useState(false);
   const [destRoom, setDestRoom] = useState("");
+  // Per req 3.2: every time a tenant moves into a room, an initial meter
+  // reading must be captured for the new room — default to that room's
+  // last known meter values so the typical case is a one-click confirm.
+  const [moveInitElec, setMoveInitElec]   = useState("");
+  const [moveInitWater, setMoveInitWater] = useState("");
+  useEffect(() => {
+    if (!destRoom) { setMoveInitElec(""); setMoveInitWater(""); return; }
+    const dest = rooms.find(r => r.id === destRoom);
+    setMoveInitElec(String(dest?.lastElecMeter  ?? 0));
+    setMoveInitWater(String(dest?.lastWaterMeter ?? 0));
+  }, [destRoom, rooms]);
   const [editOpen, setEditOpen] = useState(false);
   const [editType, setEditType] = useState("");
   const [editPrice, setEditPrice] = useState("");
@@ -1068,22 +1094,54 @@ export function RoomDetailModal({ roomId, onClose, onMove, onTenant, onAddTenant
             {destRoom && (() => {
               const dest = rooms.find(r => r.id === destRoom);
               const swap = tenants.find(t => t.room === destRoom);
+              const meterValid = moveInitElec !== "" && moveInitWater !== "";
+              const canConfirm = !swap && meterValid;
               return (
-                <div style={{ marginTop: 12, padding: "12px 14px", background: "var(--surface)", borderRadius: 10,
-                  border: "1px solid var(--line)", display: "flex", alignItems: "center", gap: 10 }}>
-                  <IconBell size={16} stroke={swap ? "var(--warn)" : "var(--brand)"}/>
-                  <div style={{ flex: 1, fontSize: 12, color: "var(--ink-2)", lineHeight: 1.5 }}>
-                    {swap ? (
-                      <>ห้อง {destRoom} มี <b>{swap.name}</b> อยู่แล้ว — การย้ายจะต้องจัดการผู้เช่าเดิมก่อน</>
-                    ) : (
-                      <>ย้าย <b>{tenant.name}</b> จาก <b>{roomId}</b> → <b>{destRoom}</b> ({dest.type}, {baht(dest.price)}/เดือน)</>
-                    )}
+                <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 10 }}>
+                  <div style={{ padding: "12px 14px", background: "var(--surface)", borderRadius: 10,
+                    border: "1px solid var(--line)", display: "flex", alignItems: "center", gap: 10 }}>
+                    <IconBell size={16} stroke={swap ? "var(--warn)" : "var(--brand)"}/>
+                    <div style={{ flex: 1, fontSize: 12, color: "var(--ink-2)", lineHeight: 1.5 }}>
+                      {swap ? (
+                        <>ห้อง {destRoom} มี <b>{swap.name}</b> อยู่แล้ว — การย้ายจะต้องจัดการผู้เช่าเดิมก่อน</>
+                      ) : (
+                        <>ย้าย <b>{tenant.name}</b> จาก <b>{roomId}</b> → <b>{destRoom}</b> ({dest.type}, {baht(dest.price)}/เดือน)</>
+                      )}
+                    </div>
                   </div>
-                  <button disabled={!!swap} onClick={() => { onMove(tenant.id, destRoom); setMoveOpen(false); }} style={{
-                    padding: "8px 14px", borderRadius: 10, border: "none",
-                    background: swap ? "var(--surface-2)" : "var(--brand)", color: swap ? "var(--ink-4)" : "white",
-                    fontWeight: 700, fontSize: 12, cursor: swap ? "not-allowed" : "pointer",
-                  }}>ยืนยันย้าย</button>
+                  {!swap && (
+                    <div style={{ padding: "12px 14px", background: "oklch(0.97 0.025 145)", borderRadius: 10,
+                      border: "1px solid oklch(0.85 0.06 145)" }}>
+                      <div style={{ fontSize: 11.5, fontWeight: 700, color: "oklch(0.35 0.1 145)", marginBottom: 6 }}>
+                        ⚡💧 เลขมิเตอร์เริ่มต้นของห้อง {destRoom} (วันย้ายเข้า)
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                        <input type="number" value={moveInitElec} onChange={e => setMoveInitElec(e.target.value)}
+                          placeholder="ไฟ" style={{ ...atInputStyle, background: "white", fontFamily: "var(--font-num)" }}/>
+                        <input type="number" value={moveInitWater} onChange={e => setMoveInitWater(e.target.value)}
+                          placeholder="น้ำ" style={{ ...atInputStyle, background: "white", fontFamily: "var(--font-num)" }}/>
+                      </div>
+                    </div>
+                  )}
+                  <button disabled={!canConfirm} onClick={async () => {
+                    await onMove(tenant.id, destRoom);
+                    if (saveInitialReading) {
+                      const today = new Date();
+                      saveInitialReading({
+                        room_id: destRoom,
+                        year: today.getFullYear(),
+                        month: today.getMonth(),
+                        elec_cur: +moveInitElec || 0,
+                        water_cur: +moveInitWater || 0,
+                      });
+                    }
+                    setMoveOpen(false);
+                  }} style={{
+                    padding: "10px 14px", borderRadius: 10, border: "none", alignSelf: "flex-end",
+                    background: canConfirm ? "var(--brand)" : "var(--surface-2)",
+                    color: canConfirm ? "white" : "var(--ink-4)",
+                    fontWeight: 700, fontSize: 12.5, cursor: canConfirm ? "pointer" : "not-allowed",
+                  }}>ยืนยันย้าย + บันทึกมิเตอร์เริ่มต้น</button>
                 </div>
               );
             })()}
@@ -1112,6 +1170,20 @@ export function RoomDetailModal({ roomId, onClose, onMove, onTenant, onAddTenant
           </div>
         </div>
 
+        {/* Per req 2.4: vacant rooms show only the meter icon (top-right) + a clean-slate
+            hint, not the previous tenant's usage history — that history lives on the
+            tenant's detail page instead. */}
+        {!occ && (
+          <div style={{ background: "var(--sage-soft)", borderRadius: 12, padding: 14,
+            border: "1px dashed oklch(0.78 0.07 145)", display: "flex", alignItems: "center", gap: 12 }}>
+            <span style={{ fontSize: 18 }}>✨</span>
+            <div style={{ flex: 1, fontSize: 12.5, color: "oklch(0.35 0.1 145)", lineHeight: 1.5 }}>
+              ห้องนี้ว่าง — ประวัติการใช้ห้องของผู้เช่าก่อนหน้าถูกซ่อนไว้
+              {hasMeter && <> · เลขมิเตอร์ล่าสุดแสดงอยู่ที่มุมขวาบน ⚡{room.lastElecMeter ?? 0} 💧{room.lastWaterMeter ?? 0}</>}
+              {" "}— ใช้เป็นค่าเริ่มต้นเมื่อมีผู้เช่าใหม่
+            </div>
+          </div>
+        )}
         <div style={{ display: "grid", gridTemplateColumns: occ ? "1fr 1fr" : "1fr", gap: 12 }}>
           {occ && (
             <div style={{ background: "var(--surface-2)", borderRadius: 12, padding: 14, border: "1px solid var(--line)" }}>
@@ -1130,6 +1202,7 @@ export function RoomDetailModal({ roomId, onClose, onMove, onTenant, onAddTenant
               ))}
             </div>
           )}
+          {occ && (
           <div style={{ background: "var(--surface-2)", borderRadius: 12, padding: 14, border: "1px solid var(--line)" }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-2)", marginBottom: 10 }}>ประวัติมิเตอร์ย้อนหลัง</div>
 
@@ -1165,6 +1238,7 @@ export function RoomDetailModal({ roomId, onClose, onMove, onTenant, onAddTenant
               </div>
             )}
           </div>
+          )}
         </div>
       </div>
     </ModalShell>

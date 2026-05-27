@@ -893,45 +893,49 @@ function TenantDetail({ tenant }) {
   const endY = isEvicted ? +tenant.evictedY : curY;
   const endM = isEvicted ? +tenant.evictedM : curM;
 
-  // Build payment timeline from move-in to end date.
-  // Payments are filtered by date-range so ex-tenant history doesn't bleed
-  // into the next tenant's view (they share the same room_id).
+  // Build payment timeline across ALL tenancy periods this tenant has had
+  // (current room + every snapshot in localStorage from prior moves/evictions).
+  // Per req 1.5: a moved tenant should still see payments from their previous room.
   const pays = (() => {
     if (!roomId || tenant.sinceY == null || tenant.sinceM == null) {
       return payments
         .filter(p => p.room_id === roomId)
         .sort((a,b) => b.year !== a.year ? b.year - a.year : b.month - a.month).slice(0, 12);
     }
-    const existing = payments.filter(p => {
-      if (p.room_id !== roomId) return false;
-      // Only payments within this tenant's tenancy period
-      const afterStart = p.year > +tenant.sinceY || (p.year === +tenant.sinceY && p.month >= +tenant.sinceM);
-      const beforeEnd  = p.year < endY || (p.year === endY && p.month <= endM);
-      return afterStart && beforeEnd;
-    });
-    const byKey = new Map(existing.map(p => [`${p.year}|${p.month}`, p]));
+    // Each period: { roomId, sinceY, sinceM, endY, endM }
+    const periods = [
+      ...tenancyHistory.map(h => ({
+        roomId: h.roomId,
+        sinceY: +h.sinceY, sinceM: +h.sinceM,
+        endY: +h.evictedY, endM: +h.evictedM,
+      })),
+      { roomId, sinceY: +tenant.sinceY, sinceM: +tenant.sinceM, endY, endM },
+    ];
     const out = [];
-    let y = +tenant.sinceY, m = +tenant.sinceM;
     let virtualId = -1;
-    while (y < endY || (y === endY && m <= endM)) {
-      const key = `${y}|${m}`;
-      const hit = byKey.get(key);
-      if (hit) {
-        out.push(hit);
-      } else {
-        out.push({
+    for (const p of periods) {
+      const priceForPeriod = rooms.find(r => r.id === p.roomId)?.price ?? room?.price ?? 0;
+      const existing = payments.filter(pp => {
+        if (pp.room_id !== p.roomId) return false;
+        const afterStart = pp.year > p.sinceY || (pp.year === p.sinceY && pp.month >= p.sinceM);
+        const beforeEnd  = pp.year < p.endY   || (pp.year === p.endY   && pp.month <= p.endM);
+        return afterStart && beforeEnd;
+      });
+      const byKey = new Map(existing.map(pp => [`${pp.year}|${pp.month}`, pp]));
+      let y = p.sinceY, m = p.sinceM;
+      while (y < p.endY || (y === p.endY && m <= p.endM)) {
+        const key = `${y}|${m}`;
+        const hit = byKey.get(key);
+        out.push(hit ?? {
           id: `virt-${virtualId--}`,
-          room_id: roomId,
-          year: y, month: m,
-          amount: room?.price || 0,
-          status: "รอชำระ",
-          paid_at: null,
+          room_id: p.roomId, year: y, month: m,
+          amount: priceForPeriod, status: "รอชำระ", paid_at: null,
           _virtual: true,
         });
+        m++; if (m > 11) { m = 0; y++; }
       }
-      m++; if (m > 11) { m = 0; y++; }
     }
-    return out.sort((a,b) => b.year !== a.year ? b.year - a.year : b.month - a.month).slice(0, 12);
+    return out.sort((a,b) => b.year !== a.year ? b.year - a.year : b.month - a.month).slice(0, 24);
   })();
 
   return (
@@ -940,13 +944,26 @@ function TenantDetail({ tenant }) {
       <div style={{ display: "flex", alignItems: "center", gap: 18, marginBottom: 24 }}>
         <Avatar name={tenant.name} size={68}/>
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: -0.3, display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: -0.3, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
             {tenant.name}
             {isEvicted && (
               <span style={{ fontSize: 11, fontWeight: 700, background: "var(--surface-2)",
                 color: "var(--ink-3)", border: "1px solid var(--line)",
                 padding: "3px 9px", borderRadius: 100, letterSpacing: 0.3 }}>อดีตผู้เช่า</span>
             )}
+            {/* Move note — per req 1.5: show "ย้ายมาจากห้อง X" badge if the most
+                recent tenancy history entry was a "moved" event */}
+            {(() => {
+              const lastMove = [...tenancyHistory].reverse().find(h => h.reason === "moved");
+              if (!lastMove || isEvicted) return null;
+              return (
+                <span style={{ fontSize: 11, fontWeight: 700, background: "oklch(0.93 0.05 240)",
+                  color: "oklch(0.35 0.13 240)", border: "1px solid oklch(0.78 0.08 240)",
+                  padding: "3px 9px", borderRadius: 100, letterSpacing: 0.3 }}>
+                  ↻ ย้ายมาจากห้อง {lastMove.roomId}
+                </span>
+              );
+            })()}
           </div>
           <div style={{ fontSize: 13, color: "var(--ink-3)", marginTop: 4, display: "flex", gap: 14, flexWrap: "wrap" }}>
             <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
@@ -2787,8 +2804,12 @@ function UtilityPage() {
                                 )}
                               </div>
                               {hEMode === "flat" ? (
-                                <div className="num" style={{ fontSize: 14, color: "var(--ink-2)" }}>
-                                  คงที่ <span style={{ fontWeight: 800, color: "oklch(0.42 0.12 80)" }}>{baht(hEFlat)}</span>
+                                <div className="num" style={{ fontSize: 13, color: "var(--ink-2)", lineHeight: 1.7 }}>
+                                  <div>คงที่ <span style={{ fontWeight: 800, color: "oklch(0.42 0.12 80)" }}>{baht(hEFlat)}</span></div>
+                                  {/* Per req 3.3: even in flat mode, show the meter readings recorded that month */}
+                                  <div style={{ fontSize: 11.5, color: "var(--ink-3)" }}>
+                                    มิเตอร์ {ePrev} → {u.elec_cur} (ใช้จริง {eUse} หน่วย)
+                                  </div>
                                 </div>
                               ) : (
                                 <div className="num" style={{ fontSize: 13, color: "var(--ink-2)" }}>
@@ -2812,8 +2833,12 @@ function UtilityPage() {
                                 )}
                               </div>
                               {hWMode === "flat" ? (
-                                <div className="num" style={{ fontSize: 14, color: "var(--ink-2)" }}>
-                                  คงที่ <span style={{ fontWeight: 800, color: "oklch(0.32 0.12 230)" }}>{baht(hWFlat)}</span>
+                                <div className="num" style={{ fontSize: 13, color: "var(--ink-2)", lineHeight: 1.7 }}>
+                                  <div>คงที่ <span style={{ fontWeight: 800, color: "oklch(0.32 0.12 230)" }}>{baht(hWFlat)}</span></div>
+                                  {/* Per req 3.3: even in flat mode, show the meter readings recorded that month */}
+                                  <div style={{ fontSize: 11.5, color: "var(--ink-3)" }}>
+                                    มิเตอร์ {wPrev} → {u.water_cur} (ใช้จริง {wUse} หน่วย)
+                                  </div>
                                 </div>
                               ) : (
                                 <div className="num" style={{ fontSize: 13, color: "var(--ink-2)" }}>

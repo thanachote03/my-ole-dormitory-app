@@ -14,13 +14,19 @@ export function useData() {
   return ctx;
 }
 
-// Supabase tenants store room_id / since_y / since_m; design components expect room/sinceY/sinceM.
+// Supabase tenants store room_id / since_y / since_m / evicted_* (snake_case);
+// design components expect room / sinceY / sinceM / evictedY / evictedM / prevRoom (camelCase).
 const adaptTenant = (t) => ({
   ...t,
   room: t.room ?? t.room_id,
-  sinceY:   t.sinceY   ?? t.since_y,
-  sinceM:   t.sinceM   ?? t.since_m,
-  sinceDay: t.sinceDay ?? t.since_day ?? 1,
+  sinceY:    t.sinceY    ?? t.since_y,
+  sinceM:    t.sinceM    ?? t.since_m,
+  sinceDay:  t.sinceDay  ?? t.since_day ?? 1,
+  evicted:   t.evicted   ?? false,
+  evictedY:  t.evictedY  ?? t.evicted_y   ?? null,
+  evictedM:  t.evictedM  ?? t.evicted_m   ?? null,
+  evictedDay:t.evictedDay?? t.evicted_day ?? null,
+  prevRoom:  t.prevRoom  ?? t.prev_room   ?? null,
 });
 
 // Supabase slips store image_url (snake_case); UI components read imageUrl (camelCase).
@@ -212,8 +218,32 @@ export function DataProvider({ children }) {
     if (cur.room === toRoom) return { ok: true };  // no-op
     const fromRoom = cur.room;
 
-    // Optimistic in-memory update — keep side-effects out of setState updater
-    setTenants(prev => prev.map(t => t.id === tenantId ? { ...t, room: toRoom } : t));
+    // Per req 1.5: payment history from the old room must stay visible in the
+    // tenant's detail view. We snapshot the old tenancy into localStorage and
+    // reset sinceY/M to today so the new room starts a clean billing cycle.
+    // TenantDetail then unions payments from all tenancyHistory entries.
+    const today = new Date();
+    const moveY = today.getFullYear();
+    const moveM = today.getMonth();
+    const moveD = today.getDate();
+    if (fromRoom && cur.sinceY != null) {
+      try {
+        const key = `baan_history_${tenantId}`;
+        const hist = JSON.parse(localStorage.getItem(key) || "[]");
+        hist.push({
+          roomId: fromRoom,
+          sinceDay: cur.sinceDay ?? 1, sinceY: +cur.sinceY, sinceM: +cur.sinceM,
+          evictedDay: moveD, evictedY: moveY, evictedM: moveM,
+          reason: "moved", toRoom,
+        });
+        localStorage.setItem(key, JSON.stringify(hist));
+      } catch {}
+    }
+
+    // Optimistic in-memory update — new room + reset since to today
+    setTenants(prev => prev.map(t => t.id === tenantId
+      ? { ...t, room: toRoom, sinceY: moveY, sinceM: moveM, sinceDay: moveD }
+      : t));
     setRooms(prev => prev.map(r => {
       if (r.id === fromRoom) return { ...r, status: "ว่าง" };
       if (r.id === toRoom)   return { ...r, status: "ไม่ว่าง" };
@@ -222,10 +252,14 @@ export function DataProvider({ children }) {
 
     // Persist to Supabase; rollback if the tenant write fails
     try {
-      const { error: tErr } = await supabase.from("tenants").update({ room_id: toRoom }).eq("id", tenantId);
+      const { error: tErr } = await supabase.from("tenants").update({
+        room_id: toRoom, since_y: moveY, since_m: moveM, since_day: moveD,
+      }).eq("id", tenantId);
       if (tErr) {
         console.error("[moveTenant] tenants:", tErr.message || tErr);
-        setTenants(prev => prev.map(t => t.id === tenantId ? { ...t, room: fromRoom } : t));
+        setTenants(prev => prev.map(t => t.id === tenantId
+          ? { ...t, room: fromRoom, sinceY: cur.sinceY, sinceM: cur.sinceM, sinceDay: cur.sinceDay }
+          : t));
         setRooms(prev => prev.map(r => {
           if (r.id === fromRoom) return { ...r, status: fromRoom ? "ไม่ว่าง" : r.status };
           if (r.id === toRoom)   return { ...r, status: "ว่าง" };
@@ -237,7 +271,9 @@ export function DataProvider({ children }) {
       if (toRoom)   await supabase.from("rooms").update({ status: "ไม่ว่าง" }).eq("id", toRoom);
     } catch (e) {
       console.error("[moveTenant] network:", e?.message || e);
-      setTenants(prev => prev.map(t => t.id === tenantId ? { ...t, room: fromRoom } : t));
+      setTenants(prev => prev.map(t => t.id === tenantId
+        ? { ...t, room: fromRoom, sinceY: cur.sinceY, sinceM: cur.sinceM, sinceDay: cur.sinceDay }
+        : t));
       setRooms(prev => prev.map(r => {
         if (r.id === fromRoom) return { ...r, status: fromRoom ? "ไม่ว่าง" : r.status };
         if (r.id === toRoom)   return { ...r, status: "ว่าง" };
@@ -248,14 +284,78 @@ export function DataProvider({ children }) {
     return { ok: true };
   }, [tenants]);
 
+  // Hard-delete a tenant AND every artifact tied to their tenancy.
+  // Per req 1.4: "ข้อมูลทุกอย่างหายทั้งหมด" — payments, utilities, slips, repairs,
+  // localStorage history, and the tenant row itself. Room flips back to ว่าง.
+  // For evicted tenants we also wipe the prev_room's data within their tenancy.
   const deleteTenant = useCallback(async (tenantId) => {
     const cur = tenants.find(t => t.id === tenantId);
-    if (cur?.room) setRooms(rs => rs.map(r => r.id === cur.room ? { ...r, status: "ว่าง" } : r));
-    setTenants(prev => prev.filter(t => t.id !== tenantId));
+    if (!cur) return { ok: false, msg: "ไม่พบผู้เช่า" };
+
+    // Build the set of (room, year, month) tuples this tenant occupied.
+    // - Current/prev room + sinceY/M through evictedY/M (or current month)
+    // - Plus any earlier tenancies stashed in localStorage by evict-then-rerent
+    const periods = [];
+    const activeRoom = cur.room || cur.prevRoom;
+    if (activeRoom && cur.sinceY != null) {
+      periods.push({
+        roomId: activeRoom,
+        sinceY: +cur.sinceY, sinceM: +cur.sinceM,
+        endY: cur.evicted && cur.evictedY != null ? +cur.evictedY : CUR_Y,
+        endM: cur.evicted && cur.evictedM != null ? +cur.evictedM : CUR_M,
+      });
+    }
     try {
-      await supabase.from("tenants").delete().eq("id", tenantId);
-      if (cur?.room) await supabase.from("rooms").update({ status: "ว่าง" }).eq("id", cur.room);
+      const hist = JSON.parse(localStorage.getItem(`baan_history_${tenantId}`) || "[]");
+      hist.forEach(h => periods.push({
+        roomId: h.roomId,
+        sinceY: +h.sinceY, sinceM: +h.sinceM,
+        endY: +h.evictedY, endM: +h.evictedM,
+      }));
     } catch {}
+
+    // Affected rooms — flip each back to ว่าง in-memory
+    const affectedRooms = Array.from(new Set(periods.map(p => p.roomId).filter(Boolean)));
+    affectedRooms.forEach(rid =>
+      setRooms(rs => rs.map(r => r.id === rid ? { ...r, status: "ว่าง" } : r))
+    );
+
+    // In-memory purge — payments/utilities filtered by room+period; slips by tenant_id
+    const inPeriod = (p, y, m) =>
+      (y > p.sinceY || (y === p.sinceY && m >= p.sinceM)) &&
+      (y < p.endY   || (y === p.endY   && m <= p.endM));
+    const matchesAny = (roomId, y, m) =>
+      periods.some(p => p.roomId === roomId && inPeriod(p, y, m));
+
+    setPayments(prev => prev.filter(p => !matchesAny(p.room_id, p.year, p.month)));
+    setUtils(   prev => prev.filter(u => !matchesAny(u.room_id, u.year, u.month)));
+    setSlips(   prev => prev.filter(s => s.tenant_id !== tenantId));
+    setTenants( prev => prev.filter(t => t.id !== tenantId));
+
+    // localStorage cleanup
+    try { localStorage.removeItem(`baan_history_${tenantId}`); } catch {}
+
+    // Supabase persistence — best-effort, log on failure
+    try {
+      await supabase.from("slips").delete().eq("tenant_id", tenantId);
+      for (const p of periods) {
+        // Payments/utilities: delete rows in (room, sinceY/M ↔ endY/M)
+        // Postgres OR filter for the month range
+        const filter = `and(year.gt.${p.sinceY},year.lt.${p.endY}),` +
+          `and(year.eq.${p.sinceY},month.gte.${p.sinceM},${p.sinceY === p.endY ? `month.lte.${p.endM}` : `year.eq.${p.sinceY}`}),` +
+          `and(year.eq.${p.endY},month.lte.${p.endM})`;
+        await supabase.from("payments")  .delete().eq("room_id", p.roomId).or(filter);
+        await supabase.from("utilities") .delete().eq("room_id", p.roomId).or(filter);
+      }
+      await supabase.from("tenants").delete().eq("id", tenantId);
+      for (const rid of affectedRooms) {
+        await supabase.from("rooms").update({ status: "ว่าง" }).eq("id", rid);
+      }
+    } catch (e) {
+      console.error("[deleteTenant] Supabase:", e?.message || e);
+      return { ok: false, msg: e?.message || "ลบไม่สำเร็จ" };
+    }
+    return { ok: true };
   }, [tenants]);
 
   // Evict = end tenancy but keep tenant record + payment history intact.
@@ -289,9 +389,17 @@ export function DataProvider({ children }) {
     if (cur?.room) {
       setRooms(prev => prev.map(r => r.id === cur.room ? { ...r, status: "ว่าง" } : r));
       try {
-        await supabase.from("tenants").update({ room_id: null }).eq("id", tenantId);
+        // Persist eviction status so "อดีตผู้เช่า" + ex-tenants page survive refresh
+        await supabase.from("tenants").update({
+          room_id: null,
+          evicted: true,
+          evicted_y: y, evicted_m: m, evicted_day: d,
+          prev_room: cur.room,
+        }).eq("id", tenantId);
         await supabase.from("rooms").update({ status: "ว่าง" }).eq("id", cur.room);
-      } catch {}
+      } catch (e) {
+        console.error("[evictTenant] Supabase:", e?.message || e);
+      }
     }
   }, [tenants]);
 
@@ -313,9 +421,15 @@ export function DataProvider({ children }) {
       return [...prev, { id: nextId, room_id: newRoomId, year: CUR_Y, month: CUR_M, amount: price, status: "รอชำระ", paid_at: null }];
     });
     try {
-      await supabase.from("tenants").update({ room_id: newRoomId, since_y: +newSinceY, since_m: +newSinceM }).eq("id", tenantId);
+      // Clear eviction fields too so the tenant is fully active again
+      await supabase.from("tenants").update({
+        room_id: newRoomId, since_y: +newSinceY, since_m: +newSinceM,
+        evicted: false, evicted_y: null, evicted_m: null, evicted_day: null, prev_room: null,
+      }).eq("id", tenantId);
       await supabase.from("rooms").update({ status: "ไม่ว่าง" }).eq("id", newRoomId);
-    } catch {}
+    } catch (e) {
+      console.error("[reactivateTenant] Supabase:", e?.message || e);
+    }
   }, [rooms]);
 
   // ─── Helper: persist the latest meter values directly on the room record ──
@@ -496,9 +610,11 @@ export function DataProvider({ children }) {
   }, []);
 
   const deleteRoom = useCallback(async (id) => {
-    // Cascade cleanup: remove dependent records so the UI doesn't dangle.
+    // Per req 2.5: full cascade — payments, utilities, repairs, slips, billing,
+    // tenants currently in this room, all wiped both in-memory AND in Supabase.
+    const tenantsToUnroom = (tenants || []).filter(t => t.room === id).map(t => t.id);
     setRooms(prev => prev.filter(r => r.id !== id));
-    setTenants(prev => prev.map(t => t.room === id ? { ...t, room: null, status: "ออกแล้ว" } : t));
+    setTenants(prev => prev.map(t => t.room === id ? { ...t, room: null } : t));
     setPayments(prev => prev.filter(p => p.room_id !== id));
     setUtils(prev => prev.filter(u => u.room_id !== id));
     setRepairs(prev => prev.filter(r => r.room_id !== id));
@@ -506,15 +622,28 @@ export function DataProvider({ children }) {
     setBilling(prev => {
       const monthly = { ...prev.monthly };
       Object.keys(monthly).forEach(k => { if (k.startsWith(id + "|")) delete monthly[k]; });
+      // Persist updated billing config so it survives refresh
+      try {
+        supabase.from("config").upsert({ key: "billing_config",
+          value: JSON.stringify({ monthly, defaultElecFlat: prev.defaultElecFlat, defaultWaterFlat: prev.defaultWaterFlat }) });
+      } catch {}
       return { ...prev, monthly };
     });
     try {
-      await supabase.from("rooms").delete().eq("id", id);
-      await supabase.from("payments").delete().eq("room_id", id);
+      // Order matters: delete child rows first (FK cascade may also handle some)
+      await supabase.from("payments") .delete().eq("room_id", id);
       await supabase.from("utilities").delete().eq("room_id", id);
-      await supabase.from("repairs").delete().eq("room_id", id);
-    } catch {}
-  }, []);
+      await supabase.from("repairs")  .delete().eq("room_id", id);
+      await supabase.from("slips")    .delete().eq("room_id", id);
+      // Detach tenants currently in this room so refresh sees them as roomless
+      if (tenantsToUnroom.length) {
+        await supabase.from("tenants").update({ room_id: null }).in("id", tenantsToUnroom);
+      }
+      await supabase.from("rooms").delete().eq("id", id);
+    } catch (e) {
+      console.error("[deleteRoom] Supabase:", e?.message || e);
+    }
+  }, [tenants]);
 
   const updateOwnerPin = useCallback(async (pin) => {
     setOwnerPin(pin);
