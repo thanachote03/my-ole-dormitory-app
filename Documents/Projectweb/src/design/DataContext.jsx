@@ -30,6 +30,15 @@ const adaptSlip = (s) => ({
   thumb:    s.thumb    ?? "slip-a",
 });
 
+// Supabase banks use snake_case + different field names; UI reads camelCase + shortened names.
+const adaptBank = (b) => ({
+  ...b,
+  bank:    b.bank   ?? b.bank_name    ?? "",
+  name:    b.name   ?? b.account_name ?? "",
+  number:  b.number ?? b.account_no   ?? "",
+  qrImage: b.qrImage ?? b.qr_image    ?? "",
+});
+
 const DEFAULT_OWNER = {
   name: "สมพร เจริญสุข",
   displayName: "คุณสมพร",
@@ -137,7 +146,7 @@ export function DataProvider({ children }) {
           if (!rep?.error  && rep?.data)  setRepairs(rep.data);
           if (!util?.error && util?.data) setUtils(util.data);
           if (!slip?.error && slip?.data) setSlips(slip.data.map(adaptSlip));
-          if (!bank?.error && bank?.data) setBanks(bank.data);
+          if (!bank?.error && bank?.data) setBanks(bank.data.map(adaptBank));
           if (!notif?.error && notif?.data) setNotifs(notif.data);
         } catch (e2) {
           console.warn("[DataProvider] Phase 2 load failed:", e2?.message || e2);
@@ -759,30 +768,86 @@ export function DataProvider({ children }) {
   }, [rooms, utils, resolveBilling]);
 
   // ─── Bank account mutations ────────────────────────────────────────
-  const addBank = useCallback((bank) => {
-    const row = { id: "B" + Date.now(), ...bank };
+  // JS uses { bank, name, number, short, color, qrImage }
+  // Supabase columns are { bank_name, account_name, account_no, short, color, qr_image }
+  const bankToDb = (b) => ({
+    bank_name:    b.bank   ?? b.bank_name,
+    account_name: b.name   ?? b.account_name,
+    account_no:   b.number ?? b.account_no,
+    short:        b.short,
+    color:        b.color,
+    qr_image:     b.qrImage ?? b.qr_image,
+    ...(b.primary != null ? { primary: b.primary } : {}),
+  });
+
+  const addBank = useCallback(async (bank) => {
+    const id = "B" + Date.now();
+    const row = { id, ...bank };
+    // Optimistic in-memory insert
     setBanks(prev => [...prev, row]);
-    try { supabase.from("banks").insert(row); } catch {}
-    return row;
-  }, []);
-
-  const updateBank = useCallback((id, patch) => {
-    setBanks(prev => prev.map(b => b.id === id ? { ...b, ...patch } : b));
-    try { supabase.from("banks").update(patch).eq("id", id); } catch {}
-  }, []);
-
-  const deleteBank = useCallback((id) => {
-    setBanks(prev => prev.filter(b => b.id !== id));
-    try { supabase.from("banks").delete().eq("id", id); } catch {}
-  }, []);
-
-  const setPrimaryBank = useCallback((id) => {
-    setBanks(prev => prev.map(b => ({ ...b, primary: b.id === id })));
-    // Atomic-ish: clear all primary flags then set the chosen one
     try {
-      supabase.from("banks").update({ primary: false }).neq("id", id)
-        .then(() => supabase.from("banks").update({ primary: true }).eq("id", id));
-    } catch {}
+      const { error } = await supabase.from("banks").insert({ id, ...bankToDb(bank) });
+      if (error) {
+        console.error("[addBank] Supabase:", error.message || error);
+        setBanks(prev => prev.filter(b => b.id !== id));
+        return { ok: false, msg: error.message || "เพิ่มบัญชีไม่สำเร็จ" };
+      }
+    } catch (e) {
+      console.error("[addBank] network:", e?.message || e);
+      setBanks(prev => prev.filter(b => b.id !== id));
+      return { ok: false, msg: "เชื่อมต่อฐานข้อมูลไม่สำเร็จ" };
+    }
+    return { ok: true, row };
+  }, []);
+
+  const updateBank = useCallback(async (id, patch) => {
+    const original = banks.find(b => b.id === id) ?? null;
+    setBanks(prev => prev.map(b => b.id === id ? { ...b, ...patch } : b));
+    try {
+      const dbPatch = bankToDb(patch);
+      // Strip undefined keys so PATCH doesn't blank existing columns
+      Object.keys(dbPatch).forEach(k => dbPatch[k] === undefined && delete dbPatch[k]);
+      const { error } = await supabase.from("banks").update(dbPatch).eq("id", id);
+      if (error) {
+        console.error("[updateBank] Supabase:", error.message || error);
+        if (original) setBanks(prev => prev.map(b => b.id === id ? original : b));
+        return { ok: false, msg: error.message || "บันทึกไม่สำเร็จ" };
+      }
+    } catch (e) {
+      console.error("[updateBank] network:", e?.message || e);
+      if (original) setBanks(prev => prev.map(b => b.id === id ? original : b));
+      return { ok: false, msg: "เชื่อมต่อฐานข้อมูลไม่สำเร็จ" };
+    }
+    return { ok: true };
+  }, [banks]);
+
+  const deleteBank = useCallback(async (id) => {
+    const original = banks.find(b => b.id === id) ?? null;
+    setBanks(prev => prev.filter(b => b.id !== id));
+    try {
+      const { error } = await supabase.from("banks").delete().eq("id", id);
+      if (error) {
+        console.error("[deleteBank] Supabase:", error.message || error);
+        if (original) setBanks(prev => [...prev, original]);
+        return { ok: false, msg: error.message || "ลบบัญชีไม่สำเร็จ" };
+      }
+    } catch (e) {
+      console.error("[deleteBank] network:", e?.message || e);
+      if (original) setBanks(prev => [...prev, original]);
+      return { ok: false, msg: "เชื่อมต่อฐานข้อมูลไม่สำเร็จ" };
+    }
+    return { ok: true };
+  }, [banks]);
+
+  const setPrimaryBank = useCallback(async (id) => {
+    setBanks(prev => prev.map(b => ({ ...b, primary: b.id === id })));
+    try {
+      // Clear primary on everyone else, then set the chosen one
+      await supabase.from("banks").update({ primary: false }).neq("id", id);
+      await supabase.from("banks").update({ primary: true }).eq("id", id);
+    } catch (e) {
+      console.error("[setPrimaryBank] network:", e?.message || e);
+    }
   }, []);
 
   // Derive room status from tenant assignments so it can never drift out of sync.

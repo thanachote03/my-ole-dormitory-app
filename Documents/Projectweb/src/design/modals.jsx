@@ -2151,16 +2151,26 @@ function BanksSettings({ banks, addBank, updateBank, deleteBank, setPrimaryBank,
   const openAdd = () => { setAdding(true); setEditId(null); setForm({ bank: BANK_PRESETS[0].bank, name: "", number: "", short: BANK_PRESETS[0].short, color: BANK_PRESETS[0].color, qrImage: "" }); };
   const cancel = () => { setEditId(null); setAdding(false); };
 
-  const saveEdit = () => {
+  const saveEdit = async () => {
     if (!form.bank || !form.number) return;
-    updateBank(editId, form);
+    const res = await updateBank(editId, form);
+    if (res?.ok === false) {
+      setFlash({ kind: "error", msg: `บันทึกไม่สำเร็จ — ${res.msg}` });
+      setTimeout(() => setFlash(null), 4000);
+      return;
+    }
     setEditId(null);
     setFlash({ kind: "ok", msg: "บันทึกบัญชีธนาคารเรียบร้อย" });
     setTimeout(() => setFlash(null), 2000);
   };
-  const saveAdd = () => {
+  const saveAdd = async () => {
     if (!form.bank || !form.number) return;
-    addBank(form);
+    const res = await addBank(form);
+    if (res?.ok === false) {
+      setFlash({ kind: "error", msg: `เพิ่มบัญชีไม่สำเร็จ — ${res.msg}` });
+      setTimeout(() => setFlash(null), 4000);
+      return;
+    }
     setAdding(false);
     setFlash({ kind: "ok", msg: "เพิ่มบัญชีธนาคารเรียบร้อย" });
     setTimeout(() => setFlash(null), 2000);
