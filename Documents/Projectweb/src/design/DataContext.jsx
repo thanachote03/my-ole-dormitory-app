@@ -674,11 +674,13 @@ export function DataProvider({ children }) {
   const updateTenant = useCallback(async (id, patch) => {
     setTenants(prev => prev.map(t => t.id === id ? { ...t, ...patch } : t));
     try {
-      // Map camelCase JS fields → snake_case Supabase columns. Personal-info
-      // columns use quoted camelCase in the schema so they pass through as-is.
+      // Only columns that actually exist in public.tenants. moveInDate is
+      // UI-only (derived from since_y/m/day) — sending it to Supabase causes
+      // PostgREST to reject the whole UPDATE with "Could not find the 'moveInDate'
+      // column", which was silently dropping the room change on tenant edits.
       const ALLOWED = [
         "name","room","room_id","phone","sinceY","sinceM","since_y","since_m",
-        "username","password","moveInDate",
+        "username","password",
         "email","address","idCardNumber","idCardImage","emergencyName","emergencyPhone",
       ];
       const dbPatch = Object.fromEntries(Object.entries(patch).filter(([k]) => ALLOWED.includes(k)));
@@ -688,6 +690,12 @@ export function DataProvider({ children }) {
         // Empty string would violate the room_id FK constraint — convert to null.
         dbPatch.room_id = dbPatch.room === "" ? null : dbPatch.room;
         delete dbPatch.room;
+      }
+      // If moveInDate was in the patch, derive since_day from it so the day-of-
+      // month is persisted (since_y/m are already covered by sinceY/M).
+      if (patch.moveInDate) {
+        const parts = String(patch.moveInDate).split("-");
+        if (parts.length === 3) dbPatch.since_day = +parts[2];
       }
       if (Object.keys(dbPatch).length) {
         const { error } = await supabase.from("tenants").update(dbPatch).eq("id", id);
