@@ -117,22 +117,9 @@ export function AddTenantModal({ onClose, onSubmit, initialRoom }) {
   const [emergencyName, setEmergencyName] = useState("");
   const [emergencyPhone, setEmergencyPhone] = useState("");
   const [docsOpen, setDocsOpen] = useState(false);
-  // Initial meter readings
-  const [initElec, setInitElec] = useState("");
-  const [initWater, setInitWater] = useState("");
-  // Per req 3.1: meter section opens automatically when a room is picked so
-  // the user can't miss filling in the baseline readings.
-  const [meterOpen, setMeterOpen] = useState(!!initialRoom);
-  useEffect(() => { if (room) setMeterOpen(true); }, [room]);
-  // Pre-fill from the room's last meter values when a room is selected — the
-  // next tenant typically starts where the previous one left off.
-  useEffect(() => {
-    if (!room) return;
-    const r = rooms.find(x => x.id === room);
-    if (r?.lastElecMeter != null && initElec === "")  setInitElec(String(r.lastElecMeter));
-    if (r?.lastWaterMeter != null && initWater === "") setInitWater(String(r.lastWaterMeter));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [room]);
+  // Initial meter readings — UI moved to the "ค่าน้ำค่าไฟ" page. Owner records
+  // them on the first meter visit after creating the tenant; that page already
+  // shows the "มิเตอร์เริ่มต้น" form whenever a room has no readings yet.
   const [saving, setSaving] = useState(false);
   const [saveErr, setSaveErr] = useState(null);
 
@@ -182,9 +169,6 @@ export function AddTenantModal({ onClose, onSubmit, initialRoom }) {
         idCardImage,
         emergencyName: emergencyName.trim(),
         emergencyPhone: emergencyPhone.trim(),
-        // Initial meter readings
-        initElec: initElec !== "" ? +initElec : null,
-        initWater: initWater !== "" ? +initWater : null,
       });
       if (res?.ok === false) {
         setSaveErr(res.msg || "บันทึกไม่สำเร็จ กรุณาลองใหม่");
@@ -362,64 +346,16 @@ export function AddTenantModal({ onClose, onSubmit, initialRoom }) {
           )}
         </div>
 
-        {/* Initial meter readings (collapsible) */}
-        <div style={{ background: "var(--surface-2)", borderRadius: 14, border: "1px solid var(--line)", overflow: "hidden" }}>
-          <button type="button" onClick={() => setMeterOpen(!meterOpen)} style={{
-            width: "100%", padding: 14, background: "transparent", border: "none", cursor: "pointer",
-            display: "flex", alignItems: "center", gap: 12, textAlign: "left",
-          }}>
-            <span style={{ fontSize: 16 }}>⚡</span>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink-2)" }}>มิเตอร์เริ่มต้น ณ วันเข้าพัก</div>
-              <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginTop: 2 }}>
-                {(initElec !== "" || initWater !== "")
-                  ? `⚡ ${initElec !== "" ? initElec : 0} หน่วย · 💧 ${initWater !== "" ? initWater : 0} หน่วย`
-                  : "บันทึกค่ามิเตอร์ตั้งต้น เพื่อคำนวณยอดใช้งานในเดือนแรกได้อย่างถูกต้อง (กดเพื่อกรอก)"}
-              </div>
-            </div>
-            <span style={{ fontSize: 11, color: "var(--ink-3)", fontWeight: 700 }}>{meterOpen ? "ซ่อน ▴" : "ขยาย ▾"}</span>
-          </button>
-          {meterOpen && (
-            <div style={{ padding: "0 14px 14px" }}>
-              <div style={{ fontSize: 12, color: "var(--ink-3)", marginBottom: 12, lineHeight: 1.5,
-                background: "oklch(0.97 0.02 240)", borderRadius: 8, padding: "8px 10px",
-                border: "1px solid var(--line)" }}>
-                💡 กรอกค่าที่มิเตอร์แสดงอยู่ ณ วันที่ผู้เช่าเข้าพัก — ระบบจะใช้ค่านี้เป็นฐานคำนวณยอดใช้น้ำ-ไฟในเดือนแรก
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                <div style={{ background: "oklch(0.98 0.035 80)", border: "1.5px solid oklch(0.88 0.07 80)", borderRadius: 12, padding: "12px 14px" }}>
-                  <div style={{ fontSize: 11.5, fontWeight: 700, color: "oklch(0.48 0.13 80)", marginBottom: 8, display: "flex", alignItems: "center", gap: 5 }}>
-                    ⚡ ค่าไฟฟ้าเริ่มต้น
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <input
-                      type="number" min="0" step="1"
-                      value={initElec}
-                      onChange={e => setInitElec(e.target.value)}
-                      placeholder="0"
-                      style={{ ...atInputStyle, background: "white", fontFamily: "var(--font-num)", fontSize: 15, fontWeight: 700, textAlign: "right" }}
-                    />
-                    <span style={{ fontSize: 12, color: "var(--ink-3)", whiteSpace: "nowrap" }}>หน่วย</span>
-                  </div>
-                </div>
-                <div style={{ background: "oklch(0.97 0.025 230)", border: "1.5px solid oklch(0.88 0.05 230)", borderRadius: 12, padding: "12px 14px" }}>
-                  <div style={{ fontSize: 11.5, fontWeight: 700, color: "oklch(0.40 0.13 230)", marginBottom: 8, display: "flex", alignItems: "center", gap: 5 }}>
-                    💧 ค่าน้ำเริ่มต้น
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <input
-                      type="number" min="0" step="1"
-                      value={initWater}
-                      onChange={e => setInitWater(e.target.value)}
-                      placeholder="0"
-                      style={{ ...atInputStyle, background: "white", fontFamily: "var(--font-num)", fontSize: 15, fontWeight: 700, textAlign: "right" }}
-                    />
-                    <span style={{ fontSize: 12, color: "var(--ink-3)", whiteSpace: "nowrap" }}>หน่วย</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
+        {/* Initial meter readings — moved to the "ค่าน้ำค่าไฟ" page. When the
+            new tenant is opened there, the meter page shows a "มิเตอร์เริ่มต้น
+            ณ วันเข้าพัก" form because the room has no readings yet. */}
+        <div style={{ background: "oklch(0.97 0.02 240)", borderRadius: 12, padding: "10px 14px",
+          border: "1px solid oklch(0.88 0.04 240)", display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ fontSize: 16 }}>💡</span>
+          <div style={{ fontSize: 12, color: "oklch(0.35 0.08 240)", lineHeight: 1.5 }}>
+            เลขมิเตอร์เริ่มต้น (น้ำ + ไฟ) จะกรอกที่หน้า <b>ค่าน้ำค่าไฟ</b> หลังบันทึกผู้เช่า —
+            เลือกห้องของผู้เช่าใหม่ ระบบจะแสดงฟอร์ม "มิเตอร์เริ่มต้น" ให้กรอกอัตโนมัติ
+          </div>
         </div>
 
         <div style={{ background: "var(--surface-2)", borderRadius: 14, padding: 16, border: "1px solid var(--line)" }}>
