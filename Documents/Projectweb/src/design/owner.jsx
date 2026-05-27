@@ -347,7 +347,7 @@ function NotifDropdown({ notifs, onPick, onClose, onReadAll }) {
 
 // ─── OVERVIEW ──────────────────────────────────────────────────────────
 function Overview({ onOpenTenant, setTab ,onEditRoom }) {
-  const { tenants, rooms, payments, repairs, slips, curY, curM, computePaymentTotal } = useData();
+  const { tenants, rooms, payments, repairs, slips, owner, curY, curM, computePaymentTotal } = useData();
   const [viewY, setViewY] = useState(curY);
   const [viewM, setViewM] = useState(curM);
   const [showPicker, setShowPicker] = useState(false);
@@ -422,7 +422,9 @@ function Overview({ onOpenTenant, setTab ,onEditRoom }) {
           <div style={{ fontSize: 13, color: "var(--ink-3)", fontWeight: 500 }}>
             ภาพรวม{isCurrentMonth ? "เดือนนี้" : "ย้อนหลัง"} · {dl(viewY, viewM)}
           </div>
-          <div style={{ fontSize: 28, fontWeight: 700, marginTop: 4, letterSpacing: -0.6 }}>สวัสดีตอนเช้า, คุณสมพร <span style={{ fontSize: 26 }}>☀️</span></div>
+          <div style={{ fontSize: 28, fontWeight: 700, marginTop: 4, letterSpacing: -0.6 }}>
+            สวัสดีตอนเช้า{owner?.displayName ? `, ${owner.displayName}` : ""} <span style={{ fontSize: 26 }}>☀️</span>
+          </div>
           <div style={{ fontSize: 14, color: "var(--ink-3)", marginTop: 6 }}>
             มี <span style={{ color: "var(--brand)", fontWeight: 700 }}>{pendingCount} ห้อง</span> ยังไม่ชำระและงานซ่อม <span style={{ color: "var(--warn)", fontWeight: 700 }}>{repairs.filter(r=>r.status!=="เสร็จแล้ว").length} รายการ</span> รอดูแล
           </div>
