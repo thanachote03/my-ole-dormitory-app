@@ -370,13 +370,22 @@ function BottomNav({ tab, setTab }) {
 
 // ─── Tenant · Home Dashboard ─────────────────────────────────────────────
 function TenantHome({ tenant, room, goTo }) {
-  const { payments, curY, curM, computePaymentTotal } = useData();
+  const { payments, repairs, notifs, owner, curY, curM, computePaymentTotal } = useData();
   const curPay = payments.find(p => p.room_id === tenant.room && p.year === curY && p.month === curM);
   const due = curPay?.status === "รอชำระ";
   // Compute full total (rent + electricity + water) so the displayed amount matches the actual bill
   const breakdown = computePaymentTotal ? computePaymentTotal(tenant.room, curY, curM) : null;
   const totalDue  = breakdown ? breakdown.total : (curPay?.amount || 0);
   const [dismissed, setDismissed] = useState(false);
+
+  // Real due-date label — honours owner.dueDay and switches to "เกินกำหนด"
+  // when today is past it (previously hardcoded "5" and never reflected overdue).
+  const dueDay = owner?.dueDay ?? 5;
+  const dueDate = new Date(curY, curM, dueDay);
+  const daysOverdue = Math.max(0, Math.floor((Date.now() - dueDate.getTime()) / 86400000));
+  const dueLabel = daysOverdue > 0
+    ? `เกินกำหนด ${daysOverdue} วันแล้ว · ครบกำหนด ${dueDay} ${MONTHS_TH[curM]} ${curY}`
+    : `ครบกำหนด ${dueDay} ${MONTHS_TH[curM]} ${curY}`;
 
   return (
     <div>
@@ -422,7 +431,7 @@ function TenantHome({ tenant, room, goTo }) {
 
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 18, position: "relative" }}>
           <div style={{ fontSize: 12, opacity: 0.85 }}>
-            {due ? "ครบกำหนด 5 " + MONTHS_TH[curM] + " " + curY : "ชำระเมื่อ " + (curPay?.paid_at || "—")}
+            {due ? dueLabel : "ชำระเมื่อ " + (curPay?.paid_at || "—")}
           </div>
           <button onClick={() => goTo?.("payment")} style={{
             background: "white", color: due ? "var(--brand-2)" : "var(--sage-ink)",
@@ -477,12 +486,51 @@ function TenantHome({ tenant, room, goTo }) {
 
       <div style={{ marginBottom: 8, fontSize: 13, fontWeight: 600, color: "var(--ink-3)", paddingLeft: 4, display: "flex", justifyContent: "space-between" }}>
         <span>กิจกรรมล่าสุด</span>
-        <span style={{ color: "var(--brand)", fontWeight: 600 }}>ดูทั้งหมด</span>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        <ActivityRow icon={<IconCheck size={16} stroke="var(--ok)"/>} tone="ok" title="ชำระค่าเช่า เดือนก่อน" sub="—"/>
-        <ActivityRow icon={<IconClock size={16} stroke="var(--warn)"/>} tone="warn" title="แจ้งซ่อม · ลูกบิดหลวม" sub="กำลังตรวจสอบ"/>
-        <ActivityRow icon={<IconBell size={16} stroke="var(--info)"/>} tone="info" title="ประกาศ · ปิดน้ำเร็ว ๆ นี้" sub="แจ้งล่วงหน้า"/>
+        {/* Build real activity from actual data: most recent paid month for
+            this room, this tenant's most recent repair, and any owner notif.
+            Previously rows were hardcoded ("ชำระค่าเช่า เดือนก่อน" ✓) which
+            contradicted overdue tenants seeing the "เกินกำหนด N วัน" banner. */}
+        {(() => {
+          const items = [];
+          const lastPaid = payments
+            .filter(p => p.room_id === tenant.room && p.status === "ชำระแล้ว")
+            .sort((a, b) => b.year !== a.year ? b.year - a.year : b.month - a.month)[0];
+          if (lastPaid) items.push({
+            tone: "ok", icon: <IconCheck size={16} stroke="var(--ok)"/>,
+            title: `ชำระค่าเช่า ${dl(lastPaid.year, lastPaid.month)}`,
+            sub: lastPaid.paid_at || "—",
+          });
+          const lastRepair = (repairs || [])
+            .filter(r => r.room_id === tenant.room)
+            .sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""))[0];
+          if (lastRepair) items.push({
+            tone: lastRepair.status === "เสร็จแล้ว" ? "ok" : "warn",
+            icon: <IconClock size={16} stroke={lastRepair.status === "เสร็จแล้ว" ? "var(--ok)" : "var(--warn)"}/>,
+            title: `แจ้งซ่อม · ${lastRepair.issue}`,
+            sub: lastRepair.status,
+          });
+          const recentNotif = (notifs || [])
+            .filter(n => n.type !== "slip" && n.type !== "repair")
+            .slice(0, 1)[0];
+          if (recentNotif) items.push({
+            tone: "info", icon: <IconBell size={16} stroke="var(--info)"/>,
+            title: recentNotif.title,
+            sub: recentNotif.msg || "",
+          });
+          if (items.length === 0) {
+            return (
+              <div style={{ padding: "14px 16px", background: "var(--surface-2)", borderRadius: 14,
+                fontSize: 12.5, color: "var(--ink-3)", textAlign: "center" }}>
+                ยังไม่มีกิจกรรม
+              </div>
+            );
+          }
+          return items.map((it, i) => (
+            <ActivityRow key={i} icon={it.icon} tone={it.tone} title={it.title} sub={it.sub}/>
+          ));
+        })()}
       </div>
     </div>
   );
@@ -658,7 +706,9 @@ function Stat({ label, value, tone }) {
 }
 
 function PayRow({ p }) {
+  const { owner } = useData();
   const paid = p.status === "ชำระแล้ว";
+  const dueDay = owner?.dueDay ?? 5;
   return (
     <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 14,
       padding: "12px 14px", display: "flex", alignItems: "center", gap: 12 }}>
@@ -674,7 +724,7 @@ function PayRow({ p }) {
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 13.5, fontWeight: 600 }}>{dl(p.year, p.month)}</div>
         <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginTop: 2 }}>
-          {paid ? `ชำระเมื่อ ${p.paid_at}` : `ครบกำหนด 5 ${MONTHS_TH[p.month]} ${p.year}`}
+          {paid ? `ชำระเมื่อ ${p.paid_at}` : `ครบกำหนด ${dueDay} ${MONTHS_TH[p.month]} ${p.year}`}
         </div>
       </div>
       <div style={{ textAlign: "right" }}>
