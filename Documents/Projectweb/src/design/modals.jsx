@@ -159,9 +159,9 @@ export function AddTenantModal({ onClose, onSubmit, initialRoom }) {
   if (!date) errors.push("วันที่เข้าพัก");
   if (pass.length < 6) errors.push("รหัสผ่าน (อย่างน้อย 6 ตัวอักษร)");
   if (pass && pass !== pass2) errors.push("รหัสผ่านไม่ตรงกัน");
-  // Per req 3.1: when assigning a room, initial meter readings are required
-  // so the first billing cycle has a baseline to subtract from.
-  if (room && (initElec === "" || initWater === "")) errors.push("เลขมิเตอร์เริ่มต้น (น้ำ+ไฟ)");
+  // Initial meter readings are optional — can be recorded later from the
+  // meter page. If left blank, the first month's usage will baseline from 0
+  // until the owner enters real numbers.
 
   const submit = async () => {
     if (errors.length || saving) return;
