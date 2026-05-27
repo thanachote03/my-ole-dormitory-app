@@ -3333,7 +3333,7 @@ export function AddRoomModal({ onClose, onSubmit }) {
   const [floor, setFloor] = useState(1);
   const [number, setNumber] = useState("");
   const [type, setType] = useState(dynRoomTypes[0] ?? "เดี่ยว");
-  const [price, setPrice] = useState(0);
+  const [price, setPrice] = useState("");
   const [amenities, setAmenities] = useState(
     dynAmenityOpts.filter(a => ["แอร์","Wi-Fi"].includes(a)).slice(0, 2)
   );
@@ -3349,7 +3349,8 @@ export function AddRoomModal({ onClose, onSubmit }) {
   })();
   const roomId = number.trim() || suggested;
   const exists = rooms.some(r => r.id.toLowerCase() === roomId.toLowerCase());
-  const valid = roomId && !exists && price > 0;
+  // price is a string from the input; treat empty / 0 / non-numeric as invalid
+  const valid = roomId && !exists && Number(price) > 0;
 
   const toggleAmenity = (a) => setAmenities(prev =>
     prev.includes(a) ? prev.filter(x => x !== a) : [...prev, a]
@@ -3418,8 +3419,9 @@ export function AddRoomModal({ onClose, onSubmit }) {
           </AtField>
         </div>
 
-        <AtField label="ค่าเช่า (บาท / เดือน)">
-          <input type="number" value={price} onChange={e => setPrice(e.target.value)}
+        <AtField label="ค่าเช่า (บาท / เดือน)" hint="กรอกจำนวนเงิน">
+          <input type="number" min="0" value={price} onChange={e => setPrice(e.target.value)}
+            placeholder="เช่น 3500"
             style={{ ...atInputStyle, fontFamily: "var(--font-num)" }}/>
         </AtField>
 
