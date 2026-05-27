@@ -271,6 +271,21 @@ function Topbar({ setTab, onAddTenant }) {
   );
 }
 
+// Compute a Thai relative-time label from an ISO timestamp. Replaces the
+// previously hard-coded "เมื่อสักครู่" string that never updated.
+function relTime(iso) {
+  if (!iso) return "—";
+  const ms = Date.now() - new Date(iso).getTime();
+  if (Number.isNaN(ms) || ms < 0) return "เมื่อสักครู่";
+  const s = Math.floor(ms / 1000);
+  if (s < 60)        return "เมื่อสักครู่";
+  if (s < 3600)      return Math.floor(s / 60)    + " นาทีที่แล้ว";
+  if (s < 86400)     return Math.floor(s / 3600)  + " ชั่วโมงที่แล้ว";
+  if (s < 86400 * 2) return "เมื่อวาน";
+  if (s < 86400 * 7) return Math.floor(s / 86400) + " วันที่แล้ว";
+  return new Date(iso).toLocaleDateString("th-TH", { day: "numeric", month: "short" });
+}
+
 function NotifDropdown({ notifs, onPick, onClose, onReadAll }) {
   const iconMap = { card: IconCard, wrench: IconWrench, bolt: IconSparkle };
   return (
@@ -314,7 +329,7 @@ function NotifDropdown({ notifs, onPick, onClose, onReadAll }) {
                     {n.unread && <span style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--brand)" }}/>}
                   </div>
                   <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 2 }}>{n.msg}</div>
-                  <div style={{ fontSize: 10.5, color: "var(--ink-4)", marginTop: 4 }}>{n.time}</div>
+                  <div style={{ fontSize: 10.5, color: "var(--ink-4)", marginTop: 4 }}>{relTime(n.created_at) || n.time}</div>
                 </div>
                 <IconChevR size={14} stroke="var(--ink-4)" style={{ marginTop: 6 }}/>
               </button>

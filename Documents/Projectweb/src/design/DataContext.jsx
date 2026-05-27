@@ -668,7 +668,17 @@ export function DataProvider({ children }) {
 
   const updateRepair = useCallback(async (id, patch) => {
     setRepairs(prev => prev.map(r => r.id === id ? { ...r, ...patch } : r));
-    try { await supabase.from("repairs").update(patch).eq("id", id); } catch {}
+    try {
+      await supabase.from("repairs").update(patch).eq("id", id);
+      // Auto-clear the paired notification once a repair is marked "เสร็จแล้ว".
+      if (patch.status === "เสร็จแล้ว") {
+        const notifId = `N-repair-${id}`;
+        setNotifs(prev => prev.filter(n => n.id !== notifId));
+        await supabase.from("notifs").delete().eq("id", notifId);
+      }
+    } catch (e) {
+      console.error("[updateRepair] Supabase:", e?.message || e);
+    }
   }, []);
 
   const updateTenant = useCallback(async (id, patch) => {
@@ -715,13 +725,43 @@ export function DataProvider({ children }) {
     const id = "R" + Date.now();
     const row = { id, status: "รอดำเนินการ", priority: "ปกติ", created_at: new Date().toISOString().slice(0,10), assigned: null, eta: null, note: null, ...rep };
     setRepairs(prev => [row, ...prev]);
-    try { await supabase.from("repairs").insert(row); } catch {}
+    // Create a paired notification so the owner sees a real "ผู้เช่าแจ้งซ่อมใหม่"
+    // alert (previously only slip uploads triggered notifs).
+    // Use a deterministic id (N-repair-<repairId>) so completing/deleting the
+    // repair can clean up the notif by lookup instead of a fuzzy filter.
+    const notifId = `N-repair-${id}`;
+    const notif = {
+      id: notifId, type: "repair", icon: "wrench",
+      title: "ผู้เช่าแจ้งซ่อมใหม่",
+      msg: `ห้อง ${row.room_id} · ${row.issue}`,
+      time: new Date().toLocaleString("th-TH"),
+      unread: true, link: "repairs",
+    };
+    setNotifs(prev => [notif, ...prev]);
+    try {
+      await supabase.from("repairs").insert(row);
+      await supabase.from("notifs").insert({
+        id: notif.id, type: notif.type, title: notif.title, msg: notif.msg,
+        time: notif.time, unread: true, link: notif.link,
+      });
+    } catch (e) {
+      console.error("[addRepair] Supabase:", e?.message || e);
+    }
     return row;
   }, []);
 
   const deleteRepair = useCallback(async (id) => {
     setRepairs(prev => prev.filter(r => r.id !== id));
-    try { await supabase.from("repairs").delete().eq("id", id); } catch {}
+    // Also drop the paired notification — leaving it would point at a repair
+    // that no longer exists.
+    const notifId = `N-repair-${id}`;
+    setNotifs(prev => prev.filter(n => n.id !== notifId));
+    try {
+      await supabase.from("repairs").delete().eq("id", id);
+      await supabase.from("notifs").delete().eq("id", notifId);
+    } catch (e) {
+      console.error("[deleteRepair] Supabase:", e?.message || e);
+    }
   }, []);
 
   const recordPayment = useCallback(async ({ room_id, year, month, amount }) => {
@@ -745,21 +785,43 @@ export function DataProvider({ children }) {
   const approveSlip = useCallback(async (id) => {
     // Read slip data from current state before updating — do NOT call async funcs inside setState updater
     const s = slips.find(x => x.id === id);
+    const notifId = `N-slip-${id}`;
     setSlips(prev => prev.map(x => x.id === id ? { ...x, status: "approved" } : x));
-    setNotifs(prev => prev.filter(n => !(n.type === "slip" && n.link === "slips") || n.id.endsWith(id)));
+    // Only remove THIS slip's notif (the previous filter was broken — it dropped
+    // every slip notif as soon as one was approved).
+    setNotifs(prev => prev.filter(n => n.id !== notifId));
     // Persist both the slip status AND the payment to Supabase (both must be awaited)
     if (s) await recordPayment({ room_id: s.room_id, year: s.year, month: s.month, amount: s.amount });
-    try { await supabase.from("slips").update({ status: "approved" }).eq("id", id); } catch {}
+    try {
+      await supabase.from("slips").update({ status: "approved" }).eq("id", id);
+      await supabase.from("notifs").delete().eq("id", notifId);
+    } catch (e) {
+      console.error("[approveSlip] Supabase:", e?.message || e);
+    }
   }, [slips, recordPayment]);
 
   const rejectSlip = useCallback(async (id) => {
+    const notifId = `N-slip-${id}`;
     setSlips(prev => prev.map(x => x.id === id ? { ...x, status: "rejected" } : x));
-    try { await supabase.from("slips").update({ status: "rejected" }).eq("id", id); } catch {}
+    setNotifs(prev => prev.filter(n => n.id !== notifId));
+    try {
+      await supabase.from("slips").update({ status: "rejected" }).eq("id", id);
+      await supabase.from("notifs").delete().eq("id", notifId);
+    } catch (e) {
+      console.error("[rejectSlip] Supabase:", e?.message || e);
+    }
   }, []);
 
   const deleteSlip = useCallback(async (id) => {
+    const notifId = `N-slip-${id}`;
     setSlips(prev => prev.filter(s => s.id !== id));
-    try { await supabase.from("slips").delete().eq("id", id); } catch {}
+    setNotifs(prev => prev.filter(n => n.id !== notifId));
+    try {
+      await supabase.from("slips").delete().eq("id", id);
+      await supabase.from("notifs").delete().eq("id", notifId);
+    } catch (e) {
+      console.error("[deleteSlip] Supabase:", e?.message || e);
+    }
   }, []);
 
   const addSlip = useCallback(async ({ tenant_id, room_id, year, month, amount, bank, imageUrl, filename }) => {
@@ -772,11 +834,14 @@ export function DataProvider({ children }) {
     };
     setSlips(prev => [row, ...prev]);
     const tenant = tenants.find(t => t.id === tenant_id);
+    // Deterministic notif id (N-slip-<slipId>) so approveSlip/rejectSlip/deleteSlip
+    // can clean it up by id lookup instead of fragile filtering.
     const notif = {
-      id: "N" + Date.now(), type: "slip", icon: "card",
+      id: `N-slip-${id}`, type: "slip", icon: "card",
       title: "ผู้เช่าแนบสลิปใหม่",
       msg: `${tenant?.name?.split(" ")[0] || tenant_id} (${room_id}) · ฿${amount?.toLocaleString?.() || amount}`,
-      time: "เมื่อสักครู่", unread: true, link: "slips",
+      time: new Date().toLocaleString("th-TH"),
+      unread: true, link: "slips",
     };
     setNotifs(prev => [notif, ...prev]);
     // Persist to Supabase — must await both; lazy builder never fires without it
@@ -865,8 +930,15 @@ export function DataProvider({ children }) {
     syncRoomMeter(room_id, year, month, elec_cur, water_cur);
   }, [syncRoomMeter]);
 
-  const markNotifsRead = useCallback(() => {
+  const markNotifsRead = useCallback(async () => {
+    // Persist the "read" state so refresh doesn't bring every notif back as
+    // unread. UPDATE all rows currently flagged unread to unread=false.
     setNotifs(prev => prev.map(n => ({ ...n, unread: false })));
+    try {
+      await supabase.from("notifs").update({ unread: false }).eq("unread", true);
+    } catch (e) {
+      console.error("[markNotifsRead] Supabase:", e?.message || e);
+    }
   }, []);
 
   // ─── Billing (เหมา ↔ มิเตอร์) per-room per-month ─────────────────
